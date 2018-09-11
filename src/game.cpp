@@ -5,6 +5,7 @@
 #include <cmath>
 #include <ctime>
 #include <iostream>
+#include <random>
 
 #include "state.h"
 #include "technology.h"
@@ -33,40 +34,60 @@ void simulation(State state, SDL_Window *window) {
 
   SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, 0);
 
-  while (true) {
+  bool quit = false;
+
+  SDL_Event e;
+
+  while (!quit) {
+    while (SDL_PollEvent(&e) != 0) {
+      // User requests quit
+      if (e.type == SDL_QUIT) {
+        quit = true;
+      }
+    }
+
     auto dt = clock::now() - start;
     start = clock::now();
     lag += std::chrono::duration_cast<std::chrono::nanoseconds>(dt);
+
+    // SDL_Delay(subtick);
 
     while (lag >= tick) {
       lag -= tick;
 
       state.update();
+
+      // SDL_Surface *screenSurface = SDL_GetWindowSurface(window);
+      //
+      // SDL_FillRect(screenSurface, NULL,
+      //              SDL_MapRGB(screenSurface->format, 0xFF, 0xFF, 0xFF));
+      SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+      SDL_RenderClear(renderer);
+
+      SDL_Color color = {0xFF, 0x00, 0x00};
+      const char *text = ("Year: " + state.date_str()).c_str();
+      SDL_Surface *surface = TTF_RenderText_Blended(font, text, color);
+
+      SDL_Texture *message = SDL_CreateTextureFromSurface(
+          renderer, surface); // now you can convert it into a texture
+
+      int texW = 0;
+      int texH = 0;
+      SDL_QueryTexture(message, NULL, NULL, &texW, &texH);
+      SDL_Rect dstrect = {0, 0, texW, texH};
+
+      SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+      for (auto const &i : *state.get_entities()) {
+        SDL_RenderDrawPoint(renderer, i.x_value(), i.y_value());
+      }
+
+      SDL_RenderCopy(renderer, message, NULL, &dstrect);
+      SDL_RenderPresent(renderer);
+
+      SDL_FreeSurface(surface);
+      SDL_DestroyTexture(message);
+      SDL_UpdateWindowSurface(window);
     }
-
-    // SDL_Surface *screenSurface = SDL_GetWindowSurface(window);
-
-    // SDL_FillRect(screenSurface, NULL,
-    //              SDL_MapRGB(screenSurface->format, 0xFF, 0xFF, 0xFF));
-
-    SDL_Color color = {0xFF, 0x00, 0x00};
-    const char *text = ("$" + std::to_string(state.get_money())).c_str();
-    SDL_Surface *surface = TTF_RenderText_Solid(font, text, color);
-
-    SDL_Texture *message = SDL_CreateTextureFromSurface(
-        renderer, surface); // now you can convert it into a texture
-
-    int texW = 0;
-    int texH = 0;
-    SDL_QueryTexture(message, NULL, NULL, &texW, &texH);
-    SDL_Rect dstrect = {0, 0, texW, texH};
-
-    SDL_RenderCopy(renderer, message, NULL, &dstrect);
-    SDL_RenderPresent(renderer);
-
-    SDL_FreeSurface(surface);
-    SDL_DestroyTexture(message);
-    SDL_UpdateWindowSurface(window);
   }
 
   SDL_DestroyRenderer(renderer);
@@ -75,26 +96,30 @@ void simulation(State state, SDL_Window *window) {
 }
 
 int main() {
+  constexpr double x_size = 640;
+  constexpr double y_size = 480;
 
-  State state(100.0);
+  State state(100.0, 0l, x_size, y_size);
+
+  for (int i = 0; i < 500; i++) {
+    state.add_entity();
+  }
 
   Technology new_tech = Technology(1.5);
   Node<Technology> tech_node = Node<Technology>(new_tech);
   std::cout << "Hello World!" << std::endl;
-  std::cout << tech_node.get_data().get_cost() << std::endl;
+  std::cout << tech_node.get_data().cost_value() << std::endl;
 
   // The window we'll be rendering to
   SDL_Window *window = NULL;
 
-  // The surface contained by the window
-  SDL_Surface *screenSurface = NULL;
-
   // Initialize SDL
   if (SDL_Init(SDL_INIT_VIDEO) >= 0 && TTF_Init() >= 0) {
     // Create window
-    window =
-        SDL_CreateWindow("SDL Tutorial", SDL_WINDOWPOS_UNDEFINED,
-                         SDL_WINDOWPOS_UNDEFINED, 640, 480, SDL_WINDOW_SHOWN);
+    window = SDL_CreateWindow("SDL Tutorial", SDL_WINDOWPOS_UNDEFINED,
+                              SDL_WINDOWPOS_UNDEFINED, std::round(x_size),
+                              std::round(y_size),
+                              SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);
     if (window == NULL) {
       printf("Window could not be created! SDL_Error: %s\n", SDL_GetError());
     } else {

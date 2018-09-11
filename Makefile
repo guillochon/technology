@@ -26,10 +26,10 @@ $(RESOURCES):
 	mkdir -p bin/$(MACAPP)/Contents/Resources
 
 $(SDL2): $(EXEC_PATH) $(RESOURCES)
-	cp -R /Library/Frameworks/SDL2.framework $(RESOURCES)/
+	rsync -at /Library/Frameworks/SDL2.framework $(RESOURCES)/
 
 $(SDL2_TTF): $(EXEC_PATH) $(RESOURCES)
-	cp -R /Library/Frameworks/SDL2_ttf.framework $(RESOURCES)/
+	rsync -at /Library/Frameworks/SDL2_ttf.framework $(RESOURCES)/
 
 $(EXEC_PATH): $(OBJECTS)
 	mkdir -p bin
@@ -42,3 +42,5 @@ clean:
 	rm -f bin/*.o
 	rm -f $(EXEC_PATH)
 	rm -rf bin/$(MACAPP)
+
+.PHONY: debug clean

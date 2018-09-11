@@ -2,4 +2,4 @@
 
 Technology::Technology(double cost) : cost(cost) {}
 
-double Technology::get_cost() { return cost; }
+double Technology::cost_value() const { return cost; }

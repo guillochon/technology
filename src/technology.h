@@ -5,5 +5,5 @@ private:
 
 public:
   Technology(double cost);
-  double get_cost();
+  double cost_value() const;
 };
