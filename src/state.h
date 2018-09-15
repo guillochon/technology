@@ -30,6 +30,8 @@ public:
   double y_size_value() const;
   const int num_entities() const;
   const std::vector<Entity> *entities_value() const;
+  const std::vector<std::vector<double>> *d2s_value() const;
+  const Entity *nearest_edible(const Entity *) const;
 };
 
 #endif

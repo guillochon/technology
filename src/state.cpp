@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <limits>
 
 State::State(double money, long epoch, double x_size, double y_size)
     : money(money), epoch(epoch), x_size(x_size), y_size(y_size) {
@@ -151,3 +152,24 @@ std::default_random_engine *State::get_gen() { return &gen; }
 const int State::num_entities() const { return entities.size(); }
 
 const std::vector<Entity> *State::entities_value() const { return &entities; }
+
+const std::vector<std::vector<double>> *State::d2s_value() const {
+  return &d2s;
+}
+
+const Entity *State::nearest_edible(const Entity *diner) const {
+  double min_dist = std::numeric_limits<double>::infinity();
+  const Entity *target;
+  for (int i = 0; i < d2s.size(); i++) {
+    if (&entities[i] != diner)
+      continue;
+    for (int j = i + 1; j < d2s[i].size(); j++) {
+      if (diner->can_eat(entities[j]) && d2s[i][j] < min_dist) {
+        min_dist = d2s[i][j];
+        target = &entities[j];
+      }
+    }
+  }
+
+  return target;
+}

@@ -6,7 +6,7 @@
 Entity::Entity(State *parent, const std::string &name, double x, double y)
     : parent(parent), name(name), alive(true), will_die(false), x(x), y(y),
       px(0), py(0), mood(0), energy(10), age(0l) {
-  d = std::normal_distribution<double>(0.0, 0.1);
+  d = std::normal_distribution<double>(0.0, 1.0);
   std::default_random_engine *gen = parent->get_gen();
   std::uniform_int_distribution<int> gene(0, 1);
 
@@ -80,12 +80,30 @@ void Entity::move() {
 
   double a = std::min(px * px + py * py, 100.0) / 100.0;
   double drag = 1.0 - a;
+  double dpx = 0.0, dpy = 0.0;
 
   px *= drag;
   py *= drag;
 
   if (energy >= 0.0) {
-    double dpx = d(*gen), dpy = d(*gen);
+    // Move to nearest food.
+    if (is_hungry()) {
+      const Entity *target = parent->nearest_edible(this);
+
+      if (target != NULL) {
+        double norm =
+            std::sqrt(std::pow(target->x - x, 2) + std::pow(target->y - y, 2));
+        dpx = max_speed * (target->x - x) / norm;
+        dpy = max_speed * (target->y - y) / norm;
+      }
+    } else {
+
+      // Move to nearest mate.
+
+      // Random walk.
+      dpx = max_speed * d(*gen);
+      dpy = max_speed * d(*gen);
+    }
     px += dpx;
     py += dpy;
     energy = energy - 0.02 * std::sqrt(dpx * dpx + dpy * dpy);
@@ -168,9 +186,11 @@ bool Entity::can_mate(const Entity &other) const {
 }
 
 bool Entity::can_eat(const Entity &other) const {
+  if (other.energy <= 0) return false;
+
   int dist = genome_distance(&genome, &other.genome);
 
-  if (dist >= 7) {
+  if (dist >= 5) {
     return true;
   } else {
     return false;
@@ -178,15 +198,16 @@ bool Entity::can_eat(const Entity &other) const {
 }
 
 void Entity::consume(Entity &other) {
-  if (other.will_die) return;
+  if (other.will_die)
+    return;
+  std::cout << "energy before: " << energy << std::endl;
   energy += other.energy + kill_energy;
+  std::cout << "energy after: " << energy << std::endl;
   other.energy = 0;
   other.mood = 0;
   other.px = 0;
   other.py = 0;
-  will_die = true;
+  other.will_die = true;
 }
 
-void Entity::kill() {
-  alive = false;
-}
+void Entity::kill() { alive = false; }

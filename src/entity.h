@@ -23,7 +23,8 @@ public:
   static constexpr double mate_mood = 3;
   static constexpr double mate_energy = 3;
   static constexpr double hunger_threshold = 5;
-  static constexpr double kill_energy = 20;
+  static constexpr double kill_energy = 50;
+  static constexpr double max_speed = 0.1;
 
   Entity(State *parent, const std::string &, double, double);
   bool alive_value() const;

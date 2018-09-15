@@ -13,6 +13,9 @@ RESOURCES = bin/$(MACAPP)/Contents/Resources
 SDL2 = $(RESOURCES)/SDL2.framework
 SDL2_TTF = $(RESOURCES)/SDL2_ttf.framework
 
+optimized: CCFLAGS += -O3
+optimized: $(MACAPP)
+
 $(MACAPP): $(EXEC_PATH) $(SDL2) $(SDL2_TTF) $(RESOURCES)
 	mkdir -p bin/$(MACAPP)/Contents/MacOS
 	cp $(EXEC_PATH) bin/$(MACAPP)/Contents/MacOS/$(EXEC_NAME)
