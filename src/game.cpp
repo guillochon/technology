@@ -7,6 +7,8 @@
 #include <iostream>
 #include <random>
 
+#include "constants.h"
+#include "entity.h"
 #include "state.h"
 #include "technology.h"
 #include "tree.h"
@@ -16,6 +18,10 @@ using namespace std::chrono_literals;
 void simulation(State state, SDL_Window *window) {
   // Clock stuff.
   constexpr std::chrono::nanoseconds tick(16ms);
+  constexpr int entity_width = 4;
+  constexpr int ew = entity_width;
+  constexpr int hew = ew / 2;
+  constexpr double year = 86400.0 * 365.0;
 
   using clock = std::chrono::high_resolution_clock;
 
@@ -76,9 +82,23 @@ void simulation(State state, SDL_Window *window) {
       SDL_QueryTexture(message, NULL, NULL, &texW, &texH);
       SDL_Rect dstrect = {0, 0, texW, texH};
 
-      SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
-      for (auto const &i : *state.get_entities()) {
-        SDL_RenderDrawPoint(renderer, i.x_value(), i.y_value());
+      for (auto const &i : *state.entities_value()) {
+        double death_scale =
+            i.alive_value() ? 1.0
+                            : std::max(year - i.time_since_death(), 0.0) / year;
+        if (i.age_value() < year) {
+          SDL_SetRenderDrawColor(renderer, 0, 0, death_scale * 255, 255);
+        } else {
+          double mood_scale =
+              0.5 * (1.0 + std::atan(2.0 * i.mood_value() / PI));
+          SDL_SetRenderDrawColor(
+              renderer, std::floor(255 * death_scale * (1.0 - mood_scale)),
+              std::floor(255 * death_scale * mood_scale), 0, 255);
+        }
+
+        SDL_Rect rect = {int(std::round(i.x_value() - hew)),
+                         int(std::round(i.y_value() - hew)), ew, ew};
+        SDL_RenderFillRect(renderer, &rect);
       }
 
       SDL_RenderCopy(renderer, message, NULL, &dstrect);
@@ -96,19 +116,16 @@ void simulation(State state, SDL_Window *window) {
 }
 
 int main() {
-  constexpr double x_size = 640;
-  constexpr double y_size = 480;
+  constexpr double x_size = 640 * 2;
+  constexpr double y_size = 480 * 2;
 
   State state(100.0, 0l, x_size, y_size);
 
-  for (int i = 0; i < 500; i++) {
-    state.add_entity();
+  for (int i = 0; i < 200; i++) {
+    std::string name = std::to_string(i);
+    std::cout << name << std::endl;
+    state.add_entity(name);
   }
-
-  Technology new_tech = Technology(1.5);
-  Node<Technology> tech_node = Node<Technology>(new_tech);
-  std::cout << "Hello World!" << std::endl;
-  std::cout << tech_node.get_data().cost_value() << std::endl;
 
   // The window we'll be rendering to
   SDL_Window *window = NULL;
@@ -117,8 +134,8 @@ int main() {
   if (SDL_Init(SDL_INIT_VIDEO) >= 0 && TTF_Init() >= 0) {
     // Create window
     window = SDL_CreateWindow("SDL Tutorial", SDL_WINDOWPOS_UNDEFINED,
-                              SDL_WINDOWPOS_UNDEFINED, std::round(x_size),
-                              std::round(y_size),
+                              SDL_WINDOWPOS_UNDEFINED, std::round(x_size / 2),
+                              std::round(y_size / 2),
                               SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);
     if (window == NULL) {
       printf("Window could not be created! SDL_Error: %s\n", SDL_GetError());

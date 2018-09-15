@@ -5,29 +5,31 @@
 #include <list>
 #include <random>
 
-#include "entity.h"
-
 class Entity;
 class State {
 
 private:
   double money;
-  long date;
+  long epoch;
   double x_size, y_size;
+  std::vector<Entity> entities;
   std::default_random_engine gen;
-  std::list<Entity> entities;
+  std::vector<std::vector<double>> d2s, affinities;
+  std::uniform_real_distribution<double> newx_dist, newy_dist;
 
 public:
-  State(double money, long date, double x_size, double y_size);
+  State(double money, long epoch, double x_size, double y_size);
   double money_value() const;
-  long date_value() const;
+  long epoch_value() const;
   std::string date_str() const;
   std::default_random_engine *get_gen();
   void update();
-  void add_entity();
+  void add_entity(const std::string &name, double x = 0.0, double y = 0.0);
+  void resize_pairwise();
   double x_size_value() const;
   double y_size_value() const;
-  const std::list<Entity> *get_entities() const;
+  const int num_entities() const;
+  const std::vector<Entity> *entities_value() const;
 };
 
 #endif
