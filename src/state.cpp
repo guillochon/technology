@@ -1,5 +1,6 @@
 #include "entity.h"
 #include "state.h"
+#include "utility.h"
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -43,7 +44,8 @@ void State::update() {
 
   for (int i = 0; i < d2s.size(); i++) {
     for (int j = i + 1; j < d2s[i].size(); j++) {
-      if (!entities[i].alive_value() || !entities[j].alive_value()) continue;
+      if (!entities[i].alive_value() || !entities[j].alive_value())
+        continue;
       d2s[i][j] = pow(entities[i].x_value() - entities[j].x_value(), 2) +
                   pow(entities[i].y_value() - entities[j].y_value(), 2);
       affinities[i][j] += 0.1 * (5.0 - d2s[i][j]);
@@ -65,21 +67,44 @@ void State::update() {
   entities.insert(entities.end(), std::make_move_iterator(babies.begin()),
                   std::make_move_iterator(babies.end()));
 
-  std::for_each(entities.begin(), entities.end(),
-                std::mem_fn(&Entity::check_for_death));
+  resize_pairwise();
 
-  entities.erase(std::remove_if(entities.begin(), entities.end(),
-                                [](const Entity &x) {
-                                  return !x.alive_value() &&
-                                         x.time_since_death() > year;
-                                }),
-                 entities.end());
+  // Determine which entities we are removing.
+  std::vector<int> to_erase;
+  for (int i = 0; i < num_entities(); i++) {
+    if (!entities[i].alive_value() && entities[i].time_since_death() > year) {
+      to_erase.push_back(i);
+    }
+  }
+
+  // Erase these entities, and associated array structures.
+  entities.erase(
+      ToggleIndices(entities, std::begin(to_erase), std::end(to_erase)),
+      entities.end());
+
+  for (int i = 0; i < d2s.size(); i++) {
+    d2s[i].erase(
+        ToggleIndices(d2s[i], std::begin(to_erase), std::end(to_erase)),
+        d2s[i].end());
+    affinities[i].erase(
+        ToggleIndices(affinities[i], std::begin(to_erase), std::end(to_erase)),
+        affinities[i].end());
+  }
+  d2s.erase(
+      ToggleIndices(d2s, std::begin(to_erase), std::end(to_erase)),
+      d2s.end());
+  affinities.erase(
+      ToggleIndices(affinities, std::begin(to_erase), std::end(to_erase)),
+      affinities.end());
+
+  // Check if any entities met criteria for death.
+  std::for_each(entities.begin(), entities.end(),
+      std::mem_fn(&Entity::check_for_death));
 
   int new_num = num_entities();
 
   if (new_num != old_num) {
-    std::cout << "entities after update: " << num_entities() << std::endl;
-    resize_pairwise();
+    std::cout << "Entity count changed to: " << new_num << std::endl;
   }
 }
 
@@ -95,12 +120,13 @@ void State::add_entity(const std::string &name, double x, double y) {
 
 void State::resize_pairwise() {
   // Resize pairwise arrays.
-  std::cout << "Resizing pairwise to " << entities.size() << "." << std::endl;
-  d2s = std::vector<std::vector<double>>(
-      entities.size(), std::vector<double>(entities.size(), 1));
-
-  affinities = std::vector<std::vector<double>>(
-      entities.size(), std::vector<double>(entities.size(), 1));
+  // std::cout << "Resizing pairwise to " << entities.size() << "." << std::endl;
+  d2s.resize(entities.size());
+  affinities.resize(entities.size());
+  for (int i = 0; i < entities.size(); i++) {
+    d2s[i].resize(entities.size());
+    affinities[i].resize(entities.size());
+  }
 }
 
 std::default_random_engine *State::get_gen() { return &gen; }
