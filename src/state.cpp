@@ -28,8 +28,6 @@ std::string State::date_str() const {
 }
 
 void State::update() {
-  constexpr double year = 86400.0 * 365.0;
-
   money -= 0.1;
   epoch += 86400;
 
@@ -65,9 +63,7 @@ void State::update() {
             std::cout << i << " ate " << j << "!" << std::endl;
           }
         } else if (entities[i].will_mate() && entities[j].will_mate() &&
-                   entities[i].can_mate(entities.at(j)) &&
-                   entities[i].age_value() > year &&
-                   entities[j].age_value() > year) {
+                   entities[i].can_mate(entities.at(j))) {
           // Mating.
           babies.push_back(entities[i].mate(entities.at(j)));
           std::cout << i << " and " << j << " mated." << std::endl;
@@ -81,16 +77,11 @@ void State::update() {
 
   resize_pairwise();
 
-  // Kill entities marked to die.
-  for (int i = 0; i < num_entities(); i++) {
-    if (entities[i].will_die_value())
-      entities[i].kill();
-  }
-
   // Determine which entities we are removing.
   std::vector<int> to_erase;
   for (int i = 0; i < num_entities(); i++) {
-    if (!entities[i].alive_value() && entities[i].time_since_death() > year) {
+    if (!entities[i].alive_value() &&
+        entities[i].time_since_death() > Entity::corpse_lifetime) {
       to_erase.push_back(i);
     }
   }
@@ -114,6 +105,12 @@ void State::update() {
       ToggleIndices(affinities, std::begin(to_erase), std::end(to_erase)),
       affinities.end());
 
+  // Kill entities marked to die.
+  for (int i = 0; i < num_entities(); i++) {
+    if (entities[i].will_die_value())
+      entities[i].kill();
+  }
+
   // Check if any entities met criteria for death.
   std::for_each(entities.begin(), entities.end(),
                 std::mem_fn(&Entity::check_for_death));
@@ -121,7 +118,8 @@ void State::update() {
   int new_num = num_entities();
 
   if (new_num != old_num) {
-    std::cout << "Entity count changed to: " << new_num << std::endl;
+    std::cout << "Entity count changed to: " << new_num << std::endl
+              << std::flush;
   }
 }
 
@@ -159,12 +157,31 @@ const std::vector<std::vector<double>> *State::d2s_value() const {
 
 const Entity *State::nearest_edible(const Entity *diner) const {
   double min_dist = std::numeric_limits<double>::infinity();
-  const Entity *target;
+  const Entity *target = NULL;
   for (int i = 0; i < d2s.size(); i++) {
     if (&entities[i] != diner)
       continue;
     for (int j = i + 1; j < d2s[i].size(); j++) {
-      if (diner->can_eat(entities[j]) && d2s[i][j] < min_dist) {
+      if (&entities[j] != diner && diner->can_eat(entities[j]) &&
+          d2s[i][j] < min_dist) {
+        min_dist = d2s[i][j];
+        target = &entities[j];
+      }
+    }
+  }
+
+  return target;
+}
+
+const Entity *State::nearest_mate(const Entity *mater) const {
+  double min_dist = std::numeric_limits<double>::infinity();
+  const Entity *target = NULL;
+  for (int i = 0; i < d2s.size(); i++) {
+    if (&entities[i] != mater)
+      continue;
+    for (int j = i + 1; j < d2s[i].size(); j++) {
+      if (&entities[j] != mater && mater->can_mate(entities[j]) &&
+          d2s[i][j] < min_dist) {
         min_dist = d2s[i][j];
         target = &entities[j];
       }

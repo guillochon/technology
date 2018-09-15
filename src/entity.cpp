@@ -5,10 +5,14 @@
 
 Entity::Entity(State *parent, const std::string &name, double x, double y)
     : parent(parent), name(name), alive(true), will_die(false), x(x), y(y),
-      px(0), py(0), mood(0), energy(10), age(0l) {
-  d = std::normal_distribution<double>(0.0, 1.0);
+      px(0), py(0), mood(0), age(0l) {
   std::default_random_engine *gen = parent->get_gen();
+
+  d = std::normal_distribution<double>(0.0, 1.0);
   std::uniform_int_distribution<int> gene(0, 1);
+  std::uniform_real_distribution<double> u(0.0, 1.0);
+
+  energy = birth_energy + birth_energy * u(*gen);
 
   genome = std::vector<int>(10);
 
@@ -64,12 +68,8 @@ void Entity::adjust_needs() {
 }
 
 void Entity::check_for_death() {
-  if (alive && energy <= 0.0) {
-    alive = false;
-    px = 0;
-    py = 0;
-    epoch_of_death = parent->epoch_value();
-  }
+  if (alive && energy <= 0.0)
+    kill();
 }
 
 void Entity::move() {
@@ -86,20 +86,28 @@ void Entity::move() {
   py *= drag;
 
   if (energy >= 0.0) {
-    // Move to nearest food.
+    const Entity *target = NULL;
     if (is_hungry()) {
-      const Entity *target = parent->nearest_edible(this);
+      // Move to nearest food.
+      target = parent->nearest_edible(this);
+    }
+    if (target == NULL && will_mate()) {
+      // Move to nearest mate.
+      target = parent->nearest_mate(this);
+    }
 
-      if (target != NULL) {
-        double norm =
-            std::sqrt(std::pow(target->x - x, 2) + std::pow(target->y - y, 2));
-        dpx = max_speed * (target->x - x) / norm;
-        dpy = max_speed * (target->y - y) / norm;
+    if (target != NULL) {
+      double norm =
+          std::sqrt(std::pow(target->x - x, 2) + std::pow(target->y - y, 2));
+      dpx = max_speed * (target->x - x) / norm;
+      dpy = max_speed * (target->y - y) / norm;
+
+      if (std::isnan(dpx) || std::isnan(dpy)) {
+        std::cout << x << " " << y << " " << target->x << " " << target->y
+                  << " " << norm << std::endl;
+        assert(false);
       }
     } else {
-
-      // Move to nearest mate.
-
       // Random walk.
       dpx = max_speed * d(*gen);
       dpy = max_speed * d(*gen);
@@ -141,7 +149,7 @@ void Entity::interact(Entity &other) {
 
   std::cout << "Distance: " << dist << std::endl;
 
-  if (dist <= 5) {
+  if (dist <= mood_dist) {
     adjust_mood(1);
     other.adjust_mood(1);
   } else {
@@ -161,6 +169,9 @@ Entity Entity::mate(Entity &other) {
   adjust_mood(-1);
   other.adjust_mood(-1);
 
+  energy -= mate_energy;
+  other.energy -= mate_energy;
+
   Entity ret =
       Entity(parent, new_name, 0.5 * (x + other.x), 0.5 * (y + other.y));
 
@@ -176,9 +187,12 @@ Entity Entity::mate(Entity &other) {
 }
 
 bool Entity::can_mate(const Entity &other) const {
+  if (age < mating_age || other.age < mating_age)
+    return false;
+
   int dist = genome_distance(&genome, &other.genome);
 
-  if (dist <= 3) {
+  if (dist <= mating_distance) {
     return true;
   } else {
     return false;
@@ -186,7 +200,8 @@ bool Entity::can_mate(const Entity &other) const {
 }
 
 bool Entity::can_eat(const Entity &other) const {
-  if (other.energy <= 0) return false;
+  if (other.energy <= 0)
+    return false;
 
   int dist = genome_distance(&genome, &other.genome);
 
@@ -210,4 +225,9 @@ void Entity::consume(Entity &other) {
   other.will_die = true;
 }
 
-void Entity::kill() { alive = false; }
+void Entity::kill() {
+  alive = false;
+  px = 0.0;
+  py = 0.0;
+  epoch_of_death = parent->epoch_value();
+}

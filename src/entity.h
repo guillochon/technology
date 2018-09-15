@@ -21,10 +21,15 @@ public:
   static constexpr double min_mood = -5;
   static constexpr double max_mood = 5;
   static constexpr double mate_mood = 3;
-  static constexpr double mate_energy = 3;
-  static constexpr double hunger_threshold = 5;
+  static constexpr double mood_dist = 6;
+  static constexpr double mate_energy = 5;
+  static constexpr double hunger_threshold = 10;
+  static constexpr double birth_energy = 20;
   static constexpr double kill_energy = 50;
   static constexpr double max_speed = 0.1;
+  static constexpr double mating_age = 86400 * 60;
+  static constexpr double mating_distance = 4;
+  static constexpr double corpse_lifetime = 86400 * 60;
 
   Entity(State *parent, const std::string &, double, double);
   bool alive_value() const;

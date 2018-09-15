@@ -46,10 +46,9 @@ void draw_text(SDL_Renderer *renderer, TTF_Font *font, const char *text, int x,
 void simulation(State &state, SDL_Window *window) {
   // Clock stuff.
   constexpr std::chrono::nanoseconds tick(16ms);
-  constexpr int entity_width = 4;
+  constexpr int entity_width = 6;
   constexpr int ew = entity_width;
   constexpr int hew = ew / 2;
-  constexpr double year = 86400.0 * 365.0;
 
   using clock = std::chrono::high_resolution_clock;
 
@@ -57,7 +56,7 @@ void simulation(State &state, SDL_Window *window) {
 
   // Font stuff.
   TTF_Font *font = TTF_OpenFont("../fonts/OpenSans-Regular.ttf", 24);
-  TTF_Font *small_font = TTF_OpenFont("../fonts/OpenSans-Regular.ttf", 14);
+  TTF_Font *small_font = TTF_OpenFont("../fonts/OpenSans-Regular.ttf", 16);
 
   if (font == NULL || small_font == NULL) {
     printf("Failed to load lazy font! SDL_ttf Error: %s\n", TTF_GetError());
@@ -101,11 +100,18 @@ void simulation(State &state, SDL_Window *window) {
       const char *text = ("Year: " + state.date_str()).c_str();
       draw_text(renderer, font, text, 0, 0, true, false);
 
+      int render_count = 0;
       for (auto const &i : *state.entities_value()) {
+        render_count++;
         double death_scale =
-            i.alive_value() ? 1.0
-                            : std::max(year - i.time_since_death(), 0.0) / year;
-        if (i.age_value() < year) {
+            (i.alive_value()
+                 ? 1.0
+                 : (0.9 *
+                        std::max(Entity::corpse_lifetime - i.time_since_death(),
+                                 0.0) /
+                        Entity::corpse_lifetime +
+                    0.1));
+        if (i.age_value() < Entity::mating_age) {
           SDL_SetRenderDrawColor(renderer, 0, 0, death_scale * 255, 255);
         } else {
           double mood_scale =
@@ -121,16 +127,20 @@ void simulation(State &state, SDL_Window *window) {
 
         std::string status;
 
-        if (i.is_hungry())
-          status += "h";
         if (!i.alive_value())
           status += "d";
+        else if (i.is_hungry())
+          status += "h";
 
         if (status != "") {
           draw_text(renderer, small_font, status.c_str(), i.x_value(),
                     i.y_value(), true, true);
         }
+
+        // std::cout << "x: " << i.x_value() << " y: " << i.y_value() << std::endl;
       }
+
+      // std::cout << "Render count: " << render_count << std::endl;
 
       SDL_RenderPresent(renderer);
       SDL_UpdateWindowSurface(window);
@@ -144,14 +154,13 @@ void simulation(State &state, SDL_Window *window) {
 }
 
 int main() {
-  constexpr double x_size = 640 * 2;
-  constexpr double y_size = 480 * 2;
+  constexpr double x_size = 1280 * 2;
+  constexpr double y_size = 800 * 2;
 
   State state(100.0, 0l, x_size, y_size);
 
   for (int i = 0; i < 200; i++) {
     std::string name = std::to_string(i);
-    std::cout << name << std::endl;
     state.add_entity(name);
   }
 

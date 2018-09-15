@@ -32,6 +32,7 @@ public:
   const std::vector<Entity> *entities_value() const;
   const std::vector<std::vector<double>> *d2s_value() const;
   const Entity *nearest_edible(const Entity *) const;
+  const Entity *nearest_mate(const Entity *) const;
 };
 
 #endif
