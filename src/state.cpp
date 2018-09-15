@@ -6,6 +6,8 @@
 
 State::State(double money, long epoch, double x_size, double y_size)
     : money(money), epoch(epoch), x_size(x_size), y_size(y_size) {
+  std::random_device rd;
+  gen = std::default_random_engine(rd());
   newx_dist = std::uniform_real_distribution<double>(0.0, x_size);
   newy_dist = std::uniform_real_distribution<double>(0.0, y_size);
   entities = std::vector<Entity>();
@@ -41,19 +43,7 @@ void State::update() {
 
   for (int i = 0; i < d2s.size(); i++) {
     for (int j = i + 1; j < d2s[i].size(); j++) {
-      if (!entities[i].alive_value() || !entities[j].alive_value()) {
-        if (!entities[i].alive_value()) {
-          std::cout << "entities parent epoch: "
-                    << entities[i].parent_value()->epoch_value() << std::endl;
-          std::cout << "time since death: " << entities[i].time_since_death()
-                    << std::endl;
-        }
-        if (!entities[j].alive_value()) {
-          std::cout << "time since death: " << entities[j].time_since_death()
-                    << std::endl;
-        }
-        continue;
-      }
+      if (!entities[i].alive_value() || !entities[j].alive_value()) continue;
       d2s[i][j] = pow(entities[i].x_value() - entities[j].x_value(), 2) +
                   pow(entities[i].y_value() - entities[j].y_value(), 2);
       affinities[i][j] += 0.1 * (5.0 - d2s[i][j]);

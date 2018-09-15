@@ -15,7 +15,7 @@
 
 using namespace std::chrono_literals;
 
-void simulation(State state, SDL_Window *window) {
+void simulation(State &state, SDL_Window *window) {
   // Clock stuff.
   constexpr std::chrono::nanoseconds tick(16ms);
   constexpr int entity_width = 4;
