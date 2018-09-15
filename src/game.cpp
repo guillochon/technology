@@ -15,6 +15,34 @@
 
 using namespace std::chrono_literals;
 
+void draw_text(SDL_Renderer *renderer, TTF_Font *font, const char *text, int x,
+               int y, bool fast = false, bool centerh = false) {
+  SDL_Color color = {0xFF, 0xFF, 0xFF};
+  SDL_Surface *surface;
+  if (fast) {
+    surface = TTF_RenderText_Solid(font, text, color);
+  } else {
+    surface = TTF_RenderText_Blended(font, text, color);
+  }
+  SDL_Texture *message = SDL_CreateTextureFromSurface(renderer, surface);
+
+  int texW = 0;
+  int texH = 0;
+  SDL_QueryTexture(message, NULL, NULL, &texW, &texH);
+
+  int dx = x;
+  int dy = y;
+
+  if (centerh)
+    dx -= texW / 2;
+  SDL_Rect dstrect = {dx, dy, texW, texH};
+
+  SDL_RenderCopy(renderer, message, NULL, &dstrect);
+
+  SDL_FreeSurface(surface);
+  SDL_DestroyTexture(message);
+}
+
 void simulation(State &state, SDL_Window *window) {
   // Clock stuff.
   constexpr std::chrono::nanoseconds tick(16ms);
@@ -28,10 +56,10 @@ void simulation(State &state, SDL_Window *window) {
   std::chrono::nanoseconds lag(0ns);
 
   // Font stuff.
-  TTF_Font *font = TTF_OpenFont("../fonts/OpenSans-Regular.ttf",
-                                24); // this opens a font style and sets a size
+  TTF_Font *font = TTF_OpenFont("../fonts/OpenSans-Regular.ttf", 24);
+  TTF_Font *small_font = TTF_OpenFont("../fonts/OpenSans-Regular.ttf", 14);
 
-  if (font == NULL) {
+  if (font == NULL || small_font == NULL) {
     printf("Failed to load lazy font! SDL_ttf Error: %s\n", TTF_GetError());
   }
 
@@ -70,17 +98,8 @@ void simulation(State &state, SDL_Window *window) {
       SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
       SDL_RenderClear(renderer);
 
-      SDL_Color color = {0xFF, 0x00, 0x00};
       const char *text = ("Year: " + state.date_str()).c_str();
-      SDL_Surface *surface = TTF_RenderText_Blended(font, text, color);
-
-      SDL_Texture *message = SDL_CreateTextureFromSurface(
-          renderer, surface); // now you can convert it into a texture
-
-      int texW = 0;
-      int texH = 0;
-      SDL_QueryTexture(message, NULL, NULL, &texW, &texH);
-      SDL_Rect dstrect = {0, 0, texW, texH};
+      draw_text(renderer, font, text, 0, 0, true, false);
 
       for (auto const &i : *state.entities_value()) {
         double death_scale =
@@ -99,13 +118,21 @@ void simulation(State &state, SDL_Window *window) {
         SDL_Rect rect = {int(std::round(i.x_value() - hew)),
                          int(std::round(i.y_value() - hew)), ew, ew};
         SDL_RenderFillRect(renderer, &rect);
+
+        std::string status;
+
+        if (i.is_hungry())
+          status += "h";
+        if (!i.alive_value())
+          status += "d";
+
+        if (status != "") {
+          draw_text(renderer, small_font, status.c_str(), i.x_value(),
+                    i.y_value(), true, true);
+        }
       }
 
-      SDL_RenderCopy(renderer, message, NULL, &dstrect);
       SDL_RenderPresent(renderer);
-
-      SDL_FreeSurface(surface);
-      SDL_DestroyTexture(message);
       SDL_UpdateWindowSurface(window);
     }
   }
@@ -113,6 +140,7 @@ void simulation(State &state, SDL_Window *window) {
   SDL_DestroyRenderer(renderer);
 
   TTF_CloseFont(font);
+  TTF_CloseFont(small_font);
 }
 
 int main() {

@@ -28,7 +28,6 @@ std::string State::date_str() const {
 
 void State::update() {
   constexpr double year = 86400.0 * 365.0;
-  constexpr double mate_mood = 5.0;
 
   money -= 0.1;
   epoch += 86400;
@@ -54,9 +53,21 @@ void State::update() {
       if (affinities[i][j] > 0.8) {
         entities[i].interact(entities.at(j));
         std::cout << i << " and " << j << " interacted." << std::endl;
-        if (entities[i].mood_value() > mate_mood &&
-            entities[j].mood_value() > mate_mood &&
-            entities[i].age_value() > year && entities[j].age_value() > year) {
+
+        if (entities[i].can_eat(entities.at(j))) {
+          // Eating.
+          bool ieatj = entities[i].energy_value() > entities[j].energy_value();
+          int eater = ieatj ? i : j;
+          if (entities[eater].is_hungry()) {
+            int target = ieatj ? j : i;
+            entities[eater].consume(entities.at(target));
+            std::cout << i << " ate " << j << "!" << std::endl;
+          }
+        } else if (entities[i].will_mate() && entities[j].will_mate() &&
+                   entities[i].can_mate(entities.at(j)) &&
+                   entities[i].age_value() > year &&
+                   entities[j].age_value() > year) {
+          // Mating.
           babies.push_back(entities[i].mate(entities.at(j)));
           std::cout << i << " and " << j << " mated." << std::endl;
         }
@@ -68,6 +79,12 @@ void State::update() {
                   std::make_move_iterator(babies.end()));
 
   resize_pairwise();
+
+  // Kill entities marked to die.
+  for (int i = 0; i < num_entities(); i++) {
+    if (entities[i].will_die_value())
+      entities[i].kill();
+  }
 
   // Determine which entities we are removing.
   std::vector<int> to_erase;
@@ -90,16 +107,15 @@ void State::update() {
         ToggleIndices(affinities[i], std::begin(to_erase), std::end(to_erase)),
         affinities[i].end());
   }
-  d2s.erase(
-      ToggleIndices(d2s, std::begin(to_erase), std::end(to_erase)),
-      d2s.end());
+  d2s.erase(ToggleIndices(d2s, std::begin(to_erase), std::end(to_erase)),
+            d2s.end());
   affinities.erase(
       ToggleIndices(affinities, std::begin(to_erase), std::end(to_erase)),
       affinities.end());
 
   // Check if any entities met criteria for death.
   std::for_each(entities.begin(), entities.end(),
-      std::mem_fn(&Entity::check_for_death));
+                std::mem_fn(&Entity::check_for_death));
 
   int new_num = num_entities();
 
@@ -120,7 +136,8 @@ void State::add_entity(const std::string &name, double x, double y) {
 
 void State::resize_pairwise() {
   // Resize pairwise arrays.
-  // std::cout << "Resizing pairwise to " << entities.size() << "." << std::endl;
+  // std::cout << "Resizing pairwise to " << entities.size() << "." <<
+  // std::endl;
   d2s.resize(entities.size());
   affinities.resize(entities.size());
   for (int i = 0; i < entities.size(); i++) {
