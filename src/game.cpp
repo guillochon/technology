@@ -104,18 +104,18 @@ void simulation(State &state, SDL_Window *window) {
       for (auto const &i : *state.entities_value()) {
         render_count++;
         double death_scale =
-            (i.alive_value()
-                 ? 1.0
-                 : (0.9 *
-                        std::max(Entity::corpse_lifetime - i.time_since_death(),
-                                 0.0) /
-                        Entity::corpse_lifetime +
-                    0.1));
+            (i.alive_value() ? 1.0
+                             : (0.9 *
+                                    std::max(Entity::corpse_lifetime -
+                                                 i.time_since_death(),
+                                             0.0) /
+                                    Entity::corpse_lifetime +
+                                0.1));
         if (i.age_value() < Entity::mating_age) {
           SDL_SetRenderDrawColor(renderer, 0, 0, death_scale * 255, 255);
         } else {
           double mood_scale =
-              0.5 * (1.0 + std::atan(2.0 * i.mood_value() / PI));
+              0.5 * (1.0 + 2.0 / PI * std::atan(i.mood_value()));
           SDL_SetRenderDrawColor(
               renderer, std::floor(255 * death_scale * (1.0 - mood_scale)),
               std::floor(255 * death_scale * mood_scale), 0, 255);
@@ -129,15 +129,20 @@ void simulation(State &state, SDL_Window *window) {
 
         if (!i.alive_value())
           status += "d";
-        else if (i.is_hungry())
-          status += "h";
+        else {
+          if (i.is_hungry())
+            status += "h";
+          if (i.will_mate())
+            status += "m";
+        }
 
         if (status != "") {
           draw_text(renderer, small_font, status.c_str(), i.x_value(),
                     i.y_value(), true, true);
         }
 
-        // std::cout << "x: " << i.x_value() << " y: " << i.y_value() << std::endl;
+        // std::cout << "x: " << i.x_value() << " y: " << i.y_value() <<
+        // std::endl;
       }
 
       // std::cout << "Render count: " << render_count << std::endl;

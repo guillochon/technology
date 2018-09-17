@@ -14,6 +14,7 @@ private:
   double px, py;
   double mood, energy, age;
   long epoch_of_death;
+  const Entity *current_target;
   std::normal_distribution<double> d;
   std::vector<int> genome;
 
@@ -30,8 +31,10 @@ public:
   static constexpr double mating_age = 86400 * 60;
   static constexpr double mating_distance = 4;
   static constexpr double corpse_lifetime = 86400 * 60;
+  static constexpr double target_forget_probability = 0.001;
 
   Entity(State *parent, const std::string &, double, double);
+  ~Entity();
   bool alive_value() const;
   bool will_die_value() const;
   double x_value() const;
@@ -41,6 +44,7 @@ public:
   double mood_value() const;
   double age_value() const;
   double energy_value() const;
+  double max_speed_value() const;
   long epoch_of_death_value() const;
   long time_since_death() const;
   std::string name_value() const;
@@ -57,6 +61,7 @@ public:
   void set_genome(std::vector<int>);
   void consume(Entity &other);
   void kill();
+  void clear_current_target();
   int genome_distance(const std::vector<int> *,
                       const std::vector<int> *) const;
   void move();

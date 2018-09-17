@@ -21,6 +21,16 @@ Entity::Entity(State *parent, const std::string &name, double x, double y)
   }
 }
 
+Entity::~Entity() {
+  for (int i = 0; i < parent->entities_value()->size(); i++) {
+    const Entity *current_target =
+        parent->entities_value()->at(i).current_target;
+    if (current_target != NULL && this == current_target) {
+      parent->clear_entity_target(i);
+    }
+  }
+}
+
 bool Entity::alive_value() const { return alive; }
 
 bool Entity::will_die_value() const { return will_die; }
@@ -38,6 +48,8 @@ double Entity::mood_value() const { return mood; }
 double Entity::age_value() const { return age; }
 
 double Entity::energy_value() const { return energy; }
+
+double Entity::max_speed_value() const { return max_speed; }
 
 long Entity::epoch_of_death_value() const { return epoch_of_death; }
 
@@ -64,7 +76,7 @@ void Entity::adjust_mood(double adjustment) {
 void Entity::adjust_needs() {
   age += 86400;
   mood *= 0.998;
-  energy -= 0.01 + std::max(mood * 0.01, 0.0);
+  // energy -= 0.01 + std::max(mood * 0.01, 0.0);
 }
 
 void Entity::check_for_death() {
@@ -80,31 +92,40 @@ void Entity::move() {
 
   double a = std::min(px * px + py * py, 100.0) / 100.0;
   double drag = 1.0 - a;
-  double dpx = 0.0, dpy = 0.0;
+  double dpx = 0.0, dpy = 0.0, time_of_travel = 0.0;
+
+  std::tuple<double, double> dp;
 
   px *= drag;
   py *= drag;
 
   if (energy >= 0.0) {
-    const Entity *target = NULL;
-    if (is_hungry()) {
-      // Move to nearest food.
-      target = parent->nearest_edible(this);
+    std::uniform_real_distribution<double> u(0.0, 1.0);
+
+    if (current_target != NULL) {
+      time_of_travel = parent->entity_intercept_time(this, current_target);
     }
-    if (target == NULL && will_mate()) {
+    if (u(*parent->get_gen()) < target_forget_probability)
+      current_target = NULL;
+    if (current_target == NULL && is_hungry()) {
+      // Move to nearest food.
+      current_target = parent->nearest_target(this, time_of_travel, "food");
+    }
+    if (current_target == NULL && will_mate()) {
       // Move to nearest mate.
-      target = parent->nearest_mate(this);
+      current_target = parent->nearest_target(this, time_of_travel, "mate");
     }
 
-    if (target != NULL) {
-      double norm =
-          std::sqrt(std::pow(target->x - x, 2) + std::pow(target->y - y, 2));
-      dpx = max_speed * (target->x - x) / norm;
-      dpy = max_speed * (target->y - y) / norm;
+    if (current_target != NULL && time_of_travel > 0.0) {
+      parent->intecept_trajectory(this, current_target, time_of_travel, dpx,
+                                  dpy);
+
+      // std::cout << "tot:" << time_of_travel << ", dpx: " << dpx
+      //           << ", dpy: " << dpy << std::endl;
 
       if (std::isnan(dpx) || std::isnan(dpy)) {
-        std::cout << x << " " << y << " " << target->x << " " << target->y
-                  << " " << norm << std::endl;
+        std::cout << x << " " << y << " " << current_target->x << " "
+                  << current_target->y << std::endl;
         assert(false);
       }
     } else {
@@ -147,7 +168,7 @@ int Entity::genome_distance(const std::vector<int> *a,
 void Entity::interact(Entity &other) {
   int dist = genome_distance(&genome, other.genome_value());
 
-  std::cout << "Distance: " << dist << std::endl;
+  // std::cout << "Distance: " << dist << std::endl;
 
   if (dist <= mood_dist) {
     adjust_mood(1);
@@ -157,8 +178,8 @@ void Entity::interact(Entity &other) {
     other.adjust_mood(-1);
   }
 
-  std::cout << "Moods are now " << mood_value() << " and " << other.mood_value()
-            << std::endl;
+  // std::cout << "Moods are now " << mood_value() << " and "
+  //           << other.mood_value() << std::endl;
 }
 
 void Entity::set_genome(std::vector<int> new_genome) { genome = new_genome; }
@@ -231,3 +252,5 @@ void Entity::kill() {
   py = 0.0;
   epoch_of_death = parent->epoch_value();
 }
+
+void Entity::clear_current_target() { current_target = NULL; }

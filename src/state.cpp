@@ -123,6 +123,16 @@ void State::update() {
   }
 }
 
+double State::smallest_non_negative_or_NaN(double a, double b) const {
+  if (a <= 0.0 || std::isnan(a)) {
+    if (b >= 0.0 && !std::isnan(b))
+      return b;
+    return 0.0;
+  } else {
+    return a;
+  }
+}
+
 void State::add_entity(const std::string &name, double x, double y) {
   if (x == 0.0)
     x = newx_dist(gen);
@@ -155,17 +165,75 @@ const std::vector<std::vector<double>> *State::d2s_value() const {
   return &d2s;
 }
 
-const Entity *State::nearest_edible(const Entity *diner) const {
-  double min_dist = std::numeric_limits<double>::infinity();
+void State::intecept_trajectory(const Entity *projectile, const Entity *target,
+                                double travel_time, double &Vhx,
+                                double &Vhy) const {
+  const double &t = travel_time;
+  double Vtx, Vty, Ptx, Pty, Phx, Phy, sh;
+
+  Phx = projectile->x_value();
+  Phy = projectile->y_value();
+  sh = projectile->max_speed_value();
+  Ptx = target->x_value();
+  Pty = target->y_value();
+  Vtx = target->px_value();
+  Vty = target->py_value();
+
+  Vhx = (Ptx - Phx + (t * Vtx)) / (t * sh);
+  Vhy = (Pty - Phy + (t * Vty)) / (t * sh);
+}
+
+double State::entity_intercept_time(const Entity *actor,
+                                    const Entity *target) const {
+  // Compute intersection.
+  double a, b, c, t1, t2, st;
+  double Phx = actor->x_value();
+  double Phy = actor->y_value();
+  double sh = actor->max_speed_value();
+  double Ptx = target->x_value();
+  double Pty = target->y_value();
+  double Vtx = target->px_value();
+  double Vty = target->py_value();
+
+  st = std::sqrt(Vtx * Vtx + Vty * Vty);
+
+  a = (Vtx * Vtx) + (Vty * Vty) - (sh * sh);
+  b = 2 * ((Ptx * Vtx) + (Pty * Vty) - (Phx * Vtx) - (Phy * Vty));
+  c = (Ptx * Ptx) + (Pty * Pty) + (Phx * Phx) + (Phy * Phy) - (2 * Phx * Ptx) -
+      (2 * Phy * Pty);
+
+  t1 = (-b + sqrt((b * b) - (4 * a * c))) / (2 * a);
+  t2 = (-b - sqrt((b * b) - (4 * a * c))) / (2 * a);
+
+  return smallest_non_negative_or_NaN(t1, t2);
+}
+
+const Entity *State::nearest_target(const Entity *actor,
+                                    double &time_of_travel,
+                                    std::string looking_for) const {
+  time_of_travel = std::numeric_limits<double>::infinity();
   const Entity *target = NULL;
+  double t;
+
   for (int i = 0; i < d2s.size(); i++) {
-    if (&entities[i] != diner)
+    if (&entities[i] != actor)
       continue;
     for (int j = i + 1; j < d2s[i].size(); j++) {
-      if (&entities[j] != diner && diner->can_eat(entities[j]) &&
-          d2s[i][j] < min_dist) {
-        min_dist = d2s[i][j];
-        target = &entities[j];
+      if (&entities[j] != actor) {
+        if (looking_for == "mate") {
+          if (!actor->can_mate(entities[j]))
+            continue;
+        } else {
+          if (!actor->can_eat(entities[j]))
+            continue;
+        }
+
+        t = entity_intercept_time(actor, &entities[j]);
+
+        if (t > 0.0 && t < time_of_travel) {
+          time_of_travel = t;
+          target = &entities[j];
+        }
       }
     }
   }
@@ -173,20 +241,4 @@ const Entity *State::nearest_edible(const Entity *diner) const {
   return target;
 }
 
-const Entity *State::nearest_mate(const Entity *mater) const {
-  double min_dist = std::numeric_limits<double>::infinity();
-  const Entity *target = NULL;
-  for (int i = 0; i < d2s.size(); i++) {
-    if (&entities[i] != mater)
-      continue;
-    for (int j = i + 1; j < d2s[i].size(); j++) {
-      if (&entities[j] != mater && mater->can_mate(entities[j]) &&
-          d2s[i][j] < min_dist) {
-        min_dist = d2s[i][j];
-        target = &entities[j];
-      }
-    }
-  }
-
-  return target;
-}
+void State::clear_entity_target(int i) { entities[i].clear_current_target(); }
