@@ -46,9 +46,11 @@ void draw_text(SDL_Renderer *renderer, TTF_Font *font, const char *text, int x,
 void simulation(State &state, SDL_Window *window) {
   // Clock stuff.
   constexpr std::chrono::nanoseconds tick(16ms);
-  constexpr int entity_width = 6;
-  constexpr int ew = entity_width;
-  constexpr int hew = ew / 2;
+  constexpr int entity_width = 12;
+  constexpr int base_ew = entity_width;
+  constexpr int base_hew = base_ew / 2;
+
+  int ew, hew;
 
   using clock = std::chrono::high_resolution_clock;
 
@@ -112,7 +114,8 @@ void simulation(State &state, SDL_Window *window) {
                                     Entity::corpse_lifetime +
                                 0.1));
         if (i.age_value() < Entity::mating_age) {
-          SDL_SetRenderDrawColor(renderer, 0, 0, death_scale * 255, 255);
+          SDL_SetRenderDrawColor(renderer, 0, 0, std::floor(death_scale * 255),
+                                 255);
         } else {
           double mood_scale =
               0.5 * (1.0 + 2.0 / PI * std::atan(i.mood_value()));
@@ -121,15 +124,21 @@ void simulation(State &state, SDL_Window *window) {
               std::floor(255 * death_scale * mood_scale), 0, 255);
         }
 
+        hew = std::round(
+            std::max(base_hew * i.age_value() / Entity::impotence_age, 1.0));
+        ew = 2 * hew;
+
         SDL_Rect rect = {int(std::round(i.x_value() - hew)),
                          int(std::round(i.y_value() - hew)), ew, ew};
         SDL_RenderFillRect(renderer, &rect);
 
         std::string status;
 
-        if (!i.alive_value())
+        if (!i.alive_value()) {
           status += "d";
-        else {
+          // std::cout << "dead info: " << i.epoch_of_death_value() << ", "
+          //           << i.time_since_death() << std::endl;
+        } else {
           if (i.is_hungry())
             status += "h";
           if (i.will_mate())
@@ -138,7 +147,7 @@ void simulation(State &state, SDL_Window *window) {
 
         if (status != "") {
           draw_text(renderer, small_font, status.c_str(), i.x_value(),
-                    i.y_value(), true, true);
+                    i.y_value() + hew, true, true);
         }
 
         // std::cout << "x: " << i.x_value() << " y: " << i.y_value() <<

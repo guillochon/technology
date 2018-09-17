@@ -18,6 +18,9 @@ private:
   std::uniform_real_distribution<double> newx_dist, newy_dist;
 
 public:
+  static constexpr double tick_time = 86400;
+  static constexpr double interaction_distance = 5.0;
+
   State(double, long, double, double);
   double money_value() const;
   long epoch_value() const;
@@ -32,6 +35,8 @@ public:
   const int num_entities() const;
   const std::vector<Entity> *entities_value() const;
   const std::vector<std::vector<double>> *d2s_value() const;
+  void minimum_vector(const Entity *, const Entity *, double &,
+                      double &) const;
   void intecept_trajectory(const Entity *, const Entity *, double, double &,
                            double &) const;
   double entity_intercept_time(const Entity *, const Entity *) const;

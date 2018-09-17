@@ -29,7 +29,7 @@ std::string State::date_str() const {
 
 void State::update() {
   money -= 0.1;
-  epoch += 86400;
+  epoch += tick_time;
 
   std::for_each(entities.begin(), entities.end(), std::mem_fn(&Entity::move));
 
@@ -46,27 +46,31 @@ void State::update() {
         continue;
       d2s[i][j] = pow(entities[i].x_value() - entities[j].x_value(), 2) +
                   pow(entities[i].y_value() - entities[j].y_value(), 2);
-      affinities[i][j] += 0.1 * (5.0 - d2s[i][j]);
+      affinities[i][j] +=
+          0.1 * (interaction_distance * interaction_distance - d2s[i][j]);
       affinities[i][j] = std::max(std::min(affinities[i][j], 1.0), 0.0);
 
       if (affinities[i][j] > 0.8) {
         entities[i].interact(entities.at(j));
-        std::cout << i << " and " << j << " interacted." << std::endl;
+        // std::cout << i << " and " << j << " interacted." << std::endl;
 
-        if (entities[i].can_eat(entities.at(j))) {
-          // Eating.
-          bool ieatj = entities[i].energy_value() > entities[j].energy_value();
-          int eater = ieatj ? i : j;
-          if (entities[eater].is_hungry()) {
-            int target = ieatj ? j : i;
-            entities[eater].consume(entities.at(target));
-            std::cout << i << " ate " << j << "!" << std::endl;
-          }
+        // Eating.
+        bool ieatj =
+            entities[i].current_strength() > entities[j].current_strength();
+        int eater = ieatj ? i : j;
+        int target = ieatj ? j : i;
+
+        if (entities[eater].is_hungry() &&
+            entities[eater].will_eat_target(entities.at(target))) {
+          entities[eater].consume(entities.at(target));
+          std::cout << i << " ate " << j << "!" << std::endl;
         } else if (entities[i].will_mate() && entities[j].will_mate() &&
-                   entities[i].can_mate(entities.at(j))) {
+                   entities[i].will_mate_target(entities.at(j))) {
           // Mating.
           babies.push_back(entities[i].mate(entities.at(j)));
-          std::cout << i << " and " << j << " mated." << std::endl;
+          std::cout << i << " and " << j
+                    << " mated (name: " << babies.back().name_value() << ")."
+                    << std::endl;
         }
       }
     }
@@ -165,19 +169,34 @@ const std::vector<std::vector<double>> *State::d2s_value() const {
   return &d2s;
 }
 
-void State::intecept_trajectory(const Entity *projectile, const Entity *target,
+void State::minimum_vector(const Entity *a, const Entity *b, double &dx,
+                           double &dy) const {
+  dx = a->x_value() - b->x_value();
+  dy = a->y_value() - b->y_value();
+
+  if (abs(dx) > x_size - abs(dx))
+    dx = x_size - abs(dx);
+
+  if (abs(dy) > y_size - abs(dy))
+    dy = y_size - abs(dy);
+}
+
+void State::intecept_trajectory(const Entity *actor, const Entity *target,
                                 double travel_time, double &Vhx,
                                 double &Vhy) const {
   const double &t = travel_time;
-  double Vtx, Vty, Ptx, Pty, Phx, Phy, sh;
+  double Vtx, Vty, Ptx, Pty, Phx, Phy, sh, dx, dy;
 
-  Phx = projectile->x_value();
-  Phy = projectile->y_value();
-  sh = projectile->max_speed_value();
+  sh = actor->terminal_speed_value();
   Ptx = target->x_value();
   Pty = target->y_value();
   Vtx = target->px_value();
   Vty = target->py_value();
+
+  // Adjust based on periodic boundaries.
+  minimum_vector(actor, target, dx, dy);
+  Phx = dx + Ptx;
+  Phy = dy + Pty;
 
   Vhx = (Ptx - Phx + (t * Vtx)) / (t * sh);
   Vhy = (Pty - Phy + (t * Vty)) / (t * sh);
@@ -186,14 +205,23 @@ void State::intecept_trajectory(const Entity *projectile, const Entity *target,
 double State::entity_intercept_time(const Entity *actor,
                                     const Entity *target) const {
   // Compute intersection.
-  double a, b, c, t1, t2, st;
-  double Phx = actor->x_value();
-  double Phy = actor->y_value();
-  double sh = actor->max_speed_value();
+  double a, b, c, t1, t2, st, dx, dy, Phx, Phy;
+  double sh = actor->terminal_speed_value();
   double Ptx = target->x_value();
   double Pty = target->y_value();
   double Vtx = target->px_value();
   double Vty = target->py_value();
+
+  if (Ptx == 0.0 || Pty == 0.0) {
+    std::cout << target << " " << Ptx << " " << Pty << " " << Vtx << " "
+              << Vty << std::flush;
+    assert(false);
+  }
+
+  // Adjust based on periodic boundaries.
+  minimum_vector(actor, target, dx, dy);
+  Phx = dx + Ptx;
+  Phy = dy + Pty;
 
   st = std::sqrt(Vtx * Vtx + Vty * Vty);
 
@@ -221,10 +249,10 @@ const Entity *State::nearest_target(const Entity *actor,
     for (int j = i + 1; j < d2s[i].size(); j++) {
       if (&entities[j] != actor) {
         if (looking_for == "mate") {
-          if (!actor->can_mate(entities[j]))
+          if (!actor->will_mate_target(entities[j]))
             continue;
         } else {
-          if (!actor->can_eat(entities[j]))
+          if (!actor->will_eat_target(entities[j]))
             continue;
         }
 
