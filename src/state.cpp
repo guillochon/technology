@@ -4,7 +4,9 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <iomanip>
 #include <limits>
+#include <sstream>
 
 State::State(double money, long epoch, double x_size, double y_size)
     : money(money), epoch(epoch), x_size(x_size), y_size(y_size) {
@@ -24,7 +26,9 @@ double State::x_size_value() const { return x_size; }
 double State::y_size_value() const { return y_size; }
 
 std::string State::date_str() const {
-  return std::to_string(0.1 * std::floor(10.0 * epoch / 86400.0 / 365.0));
+  std::ostringstream out;
+  out << std::setprecision(3) << std::fixed << epoch / 86400.0 / 365.0;
+  return out.str();
 }
 
 void State::update() {
@@ -44,6 +48,7 @@ void State::update() {
     for (int j = i + 1; j < d2s[i].size(); j++) {
       if (!entities[i].alive_value() || !entities[j].alive_value())
         continue;
+
       d2s[i][j] = pow(entities[i].x_value() - entities[j].x_value(), 2) +
                   pow(entities[i].y_value() - entities[j].y_value(), 2);
       affinities[i][j] +=
@@ -64,8 +69,14 @@ void State::update() {
             entities[eater].will_eat_target(entities.at(target))) {
           entities[eater].consume(entities.at(target));
           std::cout << i << " ate " << j << "!" << std::endl;
-        } else if (entities[i].will_mate() && entities[j].will_mate() &&
-                   entities[i].will_mate_target(entities.at(j))) {
+          continue;
+        }
+      }
+      if ((entities[i].gene_value("geodispersal gametophytes/not") &&
+           entities[j].gene_value("geodispersal gametophytes/not")) ||
+          affinities[i][j] > 0.8) {
+        if (entities[i].will_mate() && entities[j].will_mate() &&
+            entities[i].will_mate_target(entities.at(j))) {
           // Mating.
           babies.push_back(entities[i].mate(entities.at(j)));
           std::cout << i << " and " << j
@@ -137,12 +148,13 @@ double State::smallest_non_negative_or_NaN(double a, double b) const {
   }
 }
 
-void State::add_entity(const std::string &name, double x, double y) {
+void State::add_entity(const std::string &name, double x, double y,
+                       double birth_mass) {
   if (x == 0.0)
     x = newx_dist(gen);
   if (y == 0.0)
     y = newy_dist(gen);
-  entities.emplace_back(this, name, x, y);
+  entities.emplace_back(this, name, x, y, birth_mass);
 
   resize_pairwise();
 }
@@ -187,7 +199,7 @@ void State::intecept_trajectory(const Entity *actor, const Entity *target,
   const double &t = travel_time;
   double Vtx, Vty, Ptx, Pty, Phx, Phy, sh, dx, dy;
 
-  sh = actor->terminal_speed_value();
+  sh = actor->terminal_speed();
   Ptx = target->x_value();
   Pty = target->y_value();
   Vtx = target->px_value();
@@ -206,15 +218,15 @@ double State::entity_intercept_time(const Entity *actor,
                                     const Entity *target) const {
   // Compute intersection.
   double a, b, c, t1, t2, st, dx, dy, Phx, Phy;
-  double sh = actor->terminal_speed_value();
+  double sh = actor->terminal_speed();
   double Ptx = target->x_value();
   double Pty = target->y_value();
   double Vtx = target->px_value();
   double Vty = target->py_value();
 
   if (Ptx == 0.0 || Pty == 0.0) {
-    std::cout << target << " " << Ptx << " " << Pty << " " << Vtx << " "
-              << Vty << std::flush;
+    std::cout << target << " " << Ptx << " " << Pty << " " << Vtx << " " << Vty
+              << std::flush;
     assert(false);
   }
 
@@ -236,7 +248,7 @@ double State::entity_intercept_time(const Entity *actor,
   return smallest_non_negative_or_NaN(t1, t2);
 }
 
-const Entity *State::nearest_target(const Entity *actor,
+const Entity *State::nearest_target(Entity *actor,
                                     double &time_of_travel,
                                     std::string looking_for) const {
   time_of_travel = std::numeric_limits<double>::infinity();
@@ -270,3 +282,18 @@ const Entity *State::nearest_target(const Entity *actor,
 }
 
 void State::clear_entity_target(int i) { entities[i].clear_current_target(); }
+
+int State::trait_index(std::string trait) {
+  std::vector<std::string>::iterator iter =
+      std::find(Entity::all_traits.begin(), Entity::all_traits.end(), trait);
+  assert(iter != Entity::all_traits.end());
+  return std::distance(Entity::all_traits.begin(), iter);
+}
+
+int State::entity_index(const Entity *entity) const {
+  for (int i = 0; i < entities.size(); i++) {
+    if (&entities[i] == entity)
+      return i;
+  }
+  assert(false);
+}

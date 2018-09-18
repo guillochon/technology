@@ -3,9 +3,18 @@
 #include <cstdlib>
 #include <random>
 
-Entity::Entity(State *parent, const std::string &name, double x, double y)
+std::vector<std::string> Entity::all_traits = {
+    "stationary/mobile",        "asexual/sexual",
+    "intelligent/passive",      "eats intelligent/not",
+    "eats passive/not",         "photosynthesizes/not",
+    "geodispersal embryos/not", "geodispersal gametophytes/not",
+    "natural defenses/not",     "e"};
+
+Entity::Entity(State *parent, const std::string &name, double x, double y,
+               double birth_mass)
     : parent(parent), name(name), alive(true), will_die(false), x(x), y(y),
-      px(0), py(0), mood(0), age(0l), current_target(NULL) {
+      px(0), py(0), mood(0), age(0l), birth_mass(birth_mass),
+      current_target(NULL) {
   std::default_random_engine *gen = parent->get_gen();
 
   assert(x != 0.0 && y != 0.0);
@@ -14,13 +23,13 @@ Entity::Entity(State *parent, const std::string &name, double x, double y)
   std::uniform_int_distribution<int> gene(0, 1);
   u = std::uniform_real_distribution<double>(0.0, 1.0);
 
-  energy = birth_energy + birth_energy * u(*gen);
-
-  genome = std::vector<int>(10);
+  genome = std::vector<int>(all_traits.size());
 
   for (int i = 0; i < genome.size(); i++) {
     genome[i] = gene(*gen);
   }
+
+  adjust_energy(max_energy() * (0.2 + 0.8 * u(*gen)));
 }
 
 Entity::~Entity() {
@@ -53,8 +62,6 @@ double Entity::energy_value() const { return energy; }
 
 double Entity::max_speed_value() const { return max_speed; }
 
-double Entity::terminal_speed_value() const { return terminal_speed; }
-
 long Entity::epoch_of_death_value() const { return epoch_of_death; }
 
 long Entity::time_since_death() const {
@@ -62,11 +69,11 @@ long Entity::time_since_death() const {
 }
 
 double Entity::kill_energy() const {
-  return kill_energy_coefficient * age / year;
+  return kill_energy_coefficient * current_mass();
 }
 
 double Entity::max_energy() const {
-  return std::max(birth_energy, max_energy_coefficient * age / year);
+  return birth_mass + current_mass() * max_energy_coefficient * age / year;
 }
 
 double Entity::prob_wants_food() const {
@@ -78,16 +85,44 @@ double Entity::prob_wants_mate() const {
     return 0.0;
 
   double maxe = max_energy();
-  if (maxe < mate_energy)
+  double mate = mate_energy();
+  if (maxe < mate)
     return 0.0;
-  return std::max(0.0, (energy - mate_energy) / (maxe - mate_energy));
+  return std::max(0.0, (energy - mate) / (maxe - mate));
 }
 
 double Entity::prob_mutation() const {
   return std::min(1.0, age / impotence_age);
 }
 
-double Entity::current_strength() const { return age / year * energy; }
+double Entity::prob_death() const {
+  return std::min(1.0, 0.002 * age / impotence_age);
+}
+
+double Entity::current_strength() const {
+  return (gene_value("natural defenses/not") ? max_energy() : 0.0) +
+         (gene_value("stationary/mobile") ? 0.0 : age / year * energy);
+}
+
+double Entity::current_mass() const {
+  return birth_mass + std::log(1.0 + age / year);
+}
+
+double Entity::terminal_speed() const {
+  // Assumes creatures are all same density.
+  return terminal_speed_coefficient * pow(current_mass(), 1.0 / 6.0);
+}
+
+double Entity::mate_energy() const {
+  return mate_energy_coefficient * max_energy() *
+         (gene_value("geodispersal gametophytes/not") ? 0.1 : 1.0);
+}
+
+double Entity::birth_energy() const { return 2.0 * mate_energy(); }
+
+double Entity::eating_energy() const {
+  return eating_energy_coefficient * max_energy();
+}
 
 std::string Entity::name_value() const { return name; }
 
@@ -96,16 +131,22 @@ const std::vector<int> *Entity::genome_value() const { return &genome; }
 const State *Entity::parent_value() const { return parent; }
 
 bool Entity::will_mate() const {
-  return mood > mate_mood && energy >= mate_energy && age > mating_age &&
+  return mood > mate_mood && energy >= mate_energy() && age > mating_age &&
          age < impotence_age;
 }
 
 bool Entity::is_hungry() const {
-  return energy < hunger_threshold * max_energy();
+  if (!gene_value("intelligent/passive"))
+    return false;
+  return (energy < hunger_threshold * max_energy());
 }
 
 void Entity::adjust_mood(double adjustment) {
-  mood = std::min(max_mood, std::max(min_mood, mood + adjustment));
+  if (1 - gene_value("intelligent/passive")) {
+    mood = 0.0;
+  } else {
+    mood = std::min(max_mood, std::max(min_mood, mood + adjustment));
+  }
 }
 
 void Entity::adjust_energy(double adjustment) {
@@ -116,22 +157,36 @@ void Entity::adjust_energy(double adjustment) {
 void Entity::adjust_needs() {
   age += parent->tick_time;
   mood *= 0.998;
-  adjust_energy(0.01 + std::min(mood * 0.01, 0.0));
+  adjust_energy(-0.0005 - 0.0005 * gene_value("natural defenses/not") +
+                std::min(mood * 0.01, 0.0) +
+                0.0012 * gene_value("photosynthesizes/not"));
 }
 
 void Entity::check_for_death() {
-  if (alive && energy <= 0.0)
-    kill();
+  if (alive) {
+    if (energy <= 0.0) {
+      kill();
+      std::cout << "Entity " << parent->entity_index(this)
+                << " starved to death." << std::endl;
+    } else if (u(*parent->get_gen()) < prob_death()) {
+      kill();
+      std::cout << "Entity " << parent->entity_index(this)
+                << " died of natural causes." << std::endl;
+    }
+  }
 }
 
 void Entity::move() {
   if (!alive)
     return;
 
+  if (gene_value("stationary/mobile"))
+    return;
+
   std::default_random_engine *gen = parent->get_gen();
 
-  double a = std::min(px * px + py * py, terminal_speed * terminal_speed) /
-             (terminal_speed * terminal_speed);
+  double ts = terminal_speed();
+  double a = std::min(px * px + py * py, ts * ts) / (ts * ts);
   double drag = 1.0 - a;
   double dpx = 0.0, dpy = 0.0, time_of_travel = 0.0;
   double norm, dist;
@@ -142,18 +197,23 @@ void Entity::move() {
   py *= drag;
 
   if (energy >= 0.0) {
-    if (current_target != NULL) {
-      time_of_travel = parent->entity_intercept_time(this, current_target);
-    }
-    if (u(*parent->get_gen()) < target_forget_probability)
-      current_target = NULL;
-    if (current_target == NULL && u(*parent->get_gen()) < prob_wants_food()) {
-      // Move to nearest food.
-      current_target = parent->nearest_target(this, time_of_travel, "food");
-    }
-    if (current_target == NULL && u(*parent->get_gen()) < prob_wants_mate()) {
-      // Move to nearest mate.
-      current_target = parent->nearest_target(this, time_of_travel, "mate");
+    int intelligent = gene_value("intelligent/passive");
+    if (intelligent) {
+      if (current_target != NULL) {
+        time_of_travel = parent->entity_intercept_time(this, current_target);
+        if (u(*parent->get_gen()) < target_forget_probability)
+          current_target = NULL;
+      }
+      if (current_target == NULL &&
+          u(*parent->get_gen()) < prob_wants_food()) {
+        // Move to nearest food.
+        current_target = parent->nearest_target(this, time_of_travel, "food");
+      }
+      if (current_target == NULL &&
+          u(*parent->get_gen()) < prob_wants_mate()) {
+        // Move to nearest mate.
+        current_target = parent->nearest_target(this, time_of_travel, "mate");
+      }
     }
 
     if (current_target != NULL && time_of_travel > 0.0) {
@@ -161,6 +221,9 @@ void Entity::move() {
 
       parent->intecept_trajectory(this, current_target, time_of_travel, dpx,
                                   dpy);
+
+      dpx *= max_speed / ts;
+      dpy *= max_speed / ts;
 
       norm = std::sqrt(dpx * dpx + dpy * dpy);
 
@@ -188,7 +251,7 @@ void Entity::move() {
     }
     px += dpx;
     py += dpy;
-    energy = energy - 0.02 * std::sqrt(dpx * dpx + dpy * dpy);
+    adjust_energy(-0.0002 * std::sqrt(abs(px * dpx) + abs(py * dpy)));
   }
 
   x += px;
@@ -218,10 +281,12 @@ int Entity::genome_distance(const std::vector<int> *a,
   return dist;
 }
 
+int Entity::gene_value(std::string trait) const {
+  return genome[parent->trait_index(trait)];
+}
+
 void Entity::interact(Entity &other) {
   int dist = genome_distance(&genome, other.genome_value());
-
-  // std::cout << "Distance: " << dist << std::endl;
 
   if (dist <= mood_distance) {
     adjust_mood(1);
@@ -240,14 +305,22 @@ void Entity::set_genome(std::vector<int> new_genome) { genome = new_genome; }
 Entity Entity::mate(Entity &other) {
   std::uniform_int_distribution<int> gene(0, 1);
   std::string new_name = "(" + name + " + " + other.name + ")";
-  adjust_mood(-1);
-  other.adjust_mood(-1);
 
-  energy -= mate_energy;
-  other.energy -= mate_energy;
+  energy -= mate_energy();
+  other.energy -= other.mate_energy();
 
-  Entity ret =
-      Entity(parent, new_name, 0.5 * (x + other.x), 0.5 * (y + other.y));
+  double spawn_d = gene_value("geodispersal embryos/not") ? 5 : 250;
+  double new_x = 0.5 * (x + other.x) + spawn_d * d(*parent->get_gen());
+  double new_y = 0.5 * (y + other.y) + spawn_d * d(*parent->get_gen());
+  double offspring_mass =
+      birth_mass_coefficient * 0.5 * (current_mass() + other.current_mass());
+
+  if (gene_value("geodispersal gametophytes/not") and
+      other.gene_value("geodispersal gametophytes/not")) {
+    offspring_mass *= 0.1;
+  }
+
+  Entity ret = Entity(parent, new_name, new_x, new_y, offspring_mass);
 
   std::vector<int> new_genome = genome;
   for (int i = 0; i < genome.size(); i++) {
@@ -264,10 +337,19 @@ Entity Entity::mate(Entity &other) {
   return ret;
 }
 
-bool Entity::will_mate_target(const Entity &target) const {
-  int dist = genome_distance(&genome, &target.genome);
+bool Entity::will_mate_target(const Entity &target) {
+  if (target.energy_value() < target.mate_energy())
+    return false;
 
-  if (dist <= mating_distance) {
+  int genetic_diff = genome_distance(&genome, &target.genome);
+
+  if (genetic_diff <= mating_distance) {
+    if (gene_value("geodispersal gametophytes/not") &&
+        target.gene_value("geodispersal gametophytes/not")) {
+      double dist = std::sqrt(pow(x - target.x, 2) + pow(y - target.y, 2));
+      if (u(*parent->get_gen()) < 1.0 - pow(1.0 / dist, 2))
+        return false;
+    }
     return true;
   } else {
     return false;
@@ -283,6 +365,9 @@ bool Entity::will_eat_target(const Entity &target) const {
       current_strength() < target.current_strength())
     return false;
 
+  if (target.energy + target.kill_energy() < eating_energy())
+    return false;
+
   int dist = genome_distance(&genome, &target.genome);
 
   if (dist > never_eat_distance &&
@@ -294,21 +379,20 @@ bool Entity::will_eat_target(const Entity &target) const {
   }
 }
 
-void Entity::consume(Entity &other) {
-  if (other.will_die)
+void Entity::consume(Entity &target) {
+  if (target.will_die)
     return;
 
-  if (current_target == &other)
-    current_target = NULL;
+  current_target = NULL;
 
-  double de = other.energy + other.kill_energy();
+  double de = target.energy + target.kill_energy() - eating_energy();
   adjust_energy(de);
-  adjust_mood(other.energy / other.max_energy());
-  other.energy = 0;
-  other.mood = 0;
-  other.px = 0;
-  other.py = 0;
-  other.will_die = true;
+  adjust_mood(target.energy / target.max_energy());
+  target.energy = 0;
+  target.mood = 0;
+  target.px = 0;
+  target.py = 0;
+  target.will_die = true;
 }
 
 void Entity::kill() {

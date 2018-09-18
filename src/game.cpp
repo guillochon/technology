@@ -1,6 +1,7 @@
 // Technological progress game
 
 #include <SDL2/SDL.h>
+#include <SDL2/SDL2_gfxPrimitives.h>
 #include <SDL2/SDL_ttf.h>
 #include <cmath>
 #include <ctime>
@@ -46,9 +47,7 @@ void draw_text(SDL_Renderer *renderer, TTF_Font *font, const char *text, int x,
 void simulation(State &state, SDL_Window *window) {
   // Clock stuff.
   constexpr std::chrono::nanoseconds tick(16ms);
-  constexpr int entity_width = 12;
-  constexpr int base_ew = entity_width;
-  constexpr int base_hew = base_ew / 2;
+  constexpr int base_hew = 1;
 
   int ew, hew;
 
@@ -67,11 +66,14 @@ void simulation(State &state, SDL_Window *window) {
   // Main simulation loop.
   auto start = clock::now();
 
-  SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, 0);
+  SDL_Renderer *renderer =
+      SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 
   bool quit = false;
 
   SDL_Event e;
+
+  long n_ticks = 0;
 
   while (!quit) {
     while (SDL_PollEvent(&e) != 0) {
@@ -88,14 +90,17 @@ void simulation(State &state, SDL_Window *window) {
     // SDL_Delay(subtick);
 
     while (lag >= tick) {
+      n_ticks++;
+
       lag -= tick;
+
+      if (n_ticks % 60 == 0) {
+        std::string new_name = "t" + std::to_string(n_ticks);
+        state.add_entity(new_name);
+      }
 
       state.update();
 
-      // SDL_Surface *screenSurface = SDL_GetWindowSurface(window);
-      //
-      // SDL_FillRect(screenSurface, NULL,
-      //              SDL_MapRGB(screenSurface->format, 0xFF, 0xFF, 0xFF));
       SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
       SDL_RenderClear(renderer);
 
@@ -103,6 +108,7 @@ void simulation(State &state, SDL_Window *window) {
       draw_text(renderer, font, text, 0, 0, true, false);
 
       int render_count = 0;
+      std::vector<int> rgba(4);
       for (auto const &i : *state.entities_value()) {
         render_count++;
         double death_scale =
@@ -114,47 +120,41 @@ void simulation(State &state, SDL_Window *window) {
                                     Entity::corpse_lifetime +
                                 0.1));
         if (i.age_value() < Entity::mating_age) {
-          SDL_SetRenderDrawColor(renderer, 0, 0, std::floor(death_scale * 255),
-                                 255);
+          rgba = {0, 0, int(std::floor(death_scale * 255)), 255};
+        } else if (i.age_value() > Entity::impotence_age) {
+          rgba = {int(std::floor(death_scale * 255)), 0,
+                  int(std::floor(death_scale * 255)), 255};
         } else {
           double mood_scale =
               0.5 * (1.0 + 2.0 / PI * std::atan(i.mood_value()));
-          SDL_SetRenderDrawColor(
-              renderer, std::floor(255 * death_scale * (1.0 - mood_scale)),
-              std::floor(255 * death_scale * mood_scale), 0, 255);
+          rgba = {int(std::floor(255 * death_scale * (1.0 - mood_scale))),
+                  int(std::floor(255 * death_scale * mood_scale)), 0, 255};
         }
 
-        hew = std::round(
-            std::max(base_hew * i.age_value() / Entity::impotence_age, 1.0));
+        hew = std::max(base_hew * i.current_mass(), 1.0);
         ew = 2 * hew;
 
-        SDL_Rect rect = {int(std::round(i.x_value() - hew)),
-                         int(std::round(i.y_value() - hew)), ew, ew};
-        SDL_RenderFillRect(renderer, &rect);
+        // DrawFilledCircle(renderer, i.x_value(), i.y_value(), hew);
 
-        std::string status;
+        filledCircleRGBA(renderer, i.x_value(), i.y_value(), hew, rgba[0],
+                         rgba[1], rgba[2], rgba[3]);
 
-        if (!i.alive_value()) {
-          status += "d";
-          // std::cout << "dead info: " << i.epoch_of_death_value() << ", "
-          //           << i.time_since_death() << std::endl;
-        } else {
-          if (i.is_hungry())
-            status += "h";
-          if (i.will_mate())
-            status += "m";
-        }
-
-        if (status != "") {
-          draw_text(renderer, small_font, status.c_str(), i.x_value(),
-                    i.y_value() + hew, true, true);
-        }
-
-        // std::cout << "x: " << i.x_value() << " y: " << i.y_value() <<
-        // std::endl;
+        // std::string status;
+        //
+        // if (!i.alive_value()) {
+        //   status += "d";
+        // } else {
+        //   if (i.is_hungry())
+        //     status += "h";
+        //   if (i.will_mate())
+        //     status += "m";
+        // }
+        //
+        // if (status != "") {
+        //   draw_text(renderer, small_font, status.c_str(), i.x_value(),
+        //             i.y_value() + hew, true, true);
+        // }
       }
-
-      // std::cout << "Render count: " << render_count << std::endl;
 
       SDL_RenderPresent(renderer);
       SDL_UpdateWindowSurface(window);
@@ -173,7 +173,7 @@ int main() {
 
   State state(100.0, 0l, x_size, y_size);
 
-  for (int i = 0; i < 200; i++) {
+  for (int i = 0; i < 400; i++) {
     std::string name = std::to_string(i);
     state.add_entity(name);
   }

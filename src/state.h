@@ -28,7 +28,8 @@ public:
   std::default_random_engine *get_gen();
   void update();
   double smallest_non_negative_or_NaN(double, double) const;
-  void add_entity(const std::string &name, double x = 0.0, double y = 0.0);
+  void add_entity(const std::string &, double = 0.0, double = 0.0,
+                  double = 1.0);
   void resize_pairwise();
   double x_size_value() const;
   double y_size_value() const;
@@ -40,8 +41,10 @@ public:
   void intecept_trajectory(const Entity *, const Entity *, double, double &,
                            double &) const;
   double entity_intercept_time(const Entity *, const Entity *) const;
-  const Entity *nearest_target(const Entity *, double &, std::string) const;
+  const Entity *nearest_target(Entity *, double &, std::string) const;
   void clear_entity_target(int);
+  int trait_index(std::string);
+  int entity_index(const Entity *entity) const;
 };
 
 #endif
