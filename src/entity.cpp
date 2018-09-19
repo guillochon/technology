@@ -41,7 +41,7 @@ Entity::Entity(State *parent, const std::string &name, double x, double y,
 }
 
 Entity::~Entity() {
-  parent->clear_targets(this);
+  parent->clear_target_from_entities(this);
 }
 
 bool Entity::alive_value() const { return alive; }
@@ -155,6 +155,8 @@ const std::vector<unsigned short> *Entity::genome_value() const {
 }
 
 const State *Entity::parent_value() const { return parent; }
+
+const Entity *Entity::current_target_value() const { return current_target; }
 
 bool Entity::will_mate() const {
   return mood > mate_mood && energy >= mate_energy() &&

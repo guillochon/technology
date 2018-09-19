@@ -296,7 +296,7 @@ const Entity *State::nearest_target(Entity *actor, double &time_of_travel,
   return target;
 }
 
-void State::clear_targets(Entity *entity) {
+void State::clear_target_from_entities(Entity *entity) {
   for (auto &e: entities) {
     const Entity *current_target = e->current_target_value();
     if (current_target != NULL && entity == current_target) {

@@ -43,7 +43,7 @@ public:
                            double &) const;
   double entity_intercept_time(const Entity *, const Entity *) const;
   const Entity *nearest_target(Entity *, double &, std::string) const;
-  void clear_targets(Entity *);
+  void clear_target_from_entities(Entity *);
   int trait_index(std::string);
   int entity_index(const Entity *entity) const;
 };
