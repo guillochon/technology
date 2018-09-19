@@ -5,6 +5,12 @@
 #include <algorithm>
 #include <cmath>
 
+template<typename T>
+inline void remove_item_from_vector(std::vector<T> & v, const T & item)
+{
+    v.erase(std::remove(v.begin(), v.end(), item), v.end());
+}
+
 template <typename Cont, typename It>
 auto ToggleIndices(Cont &cont, It beg, It end) -> decltype(std::end(cont)) {
   int helpIndx(0);
@@ -15,8 +21,6 @@ auto ToggleIndices(Cont &cont, It beg, It end) -> decltype(std::end(cont)) {
       });
 }
 
-double sigmoid(const double x) {
-  return 1.0 / (1.0 + std::exp(-x));
-}
+double sigmoid(const double x);
 
 #endif

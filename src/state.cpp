@@ -14,7 +14,7 @@ State::State(double money, long epoch, double x_size, double y_size)
   random_generator = new std::default_random_engine(rd());
   newx_dist = std::uniform_real_distribution<double>(0.0, x_size);
   newy_dist = std::uniform_real_distribution<double>(0.0, y_size);
-  entities = std::vector<Entity>();
+  entities = std::vector<Entity *>();
 }
 
 State::~State() { delete (random_generator); }
@@ -44,61 +44,67 @@ void State::update() {
 
   int old_num = num_entities();
 
-  std::vector<Entity> babies;
+  std::vector<Entity *> offspring;
 
   for (int i = 0; i < d2s.size(); i++) {
     for (int j = i + 1; j < d2s[i].size(); j++) {
-      if (!entities[i].alive_value() || !entities[j].alive_value())
+      if (!entities[i]->alive_value() || !entities[j]->alive_value())
         continue;
 
-      d2s[i][j] = pow(entities[i].x_value() - entities[j].x_value(), 2) +
-                  pow(entities[i].y_value() - entities[j].y_value(), 2);
+      if (entities[i]->host_value() != NULL ||
+          entities[j]->host_value() != NULL)
+        continue;
+
+      d2s[i][j] = pow(entities[i]->x_value() - entities[j]->x_value(), 2) +
+                  pow(entities[i]->y_value() - entities[j]->y_value(), 2);
       affinities[i][j] +=
           0.1 * (interaction_distance * interaction_distance - d2s[i][j]);
       affinities[i][j] = std::max(std::min(affinities[i][j], 1.0), 0.0);
 
       if (affinities[i][j] > 0.8) {
-        entities[i].interact(entities.at(j));
+        entities[i]->interact(*entities[j]);
         // std::cout << i << " and " << j << " interacted." << std::endl;
 
         // Eating.
         bool ieatj =
-            entities[i].current_strength() > entities[j].current_strength();
+            entities[i]->current_strength() > entities[j]->current_strength();
         int eater = ieatj ? i : j;
         int target = ieatj ? j : i;
 
-        if (entities[eater].is_hungry() &&
-            entities[eater].will_eat_target(entities.at(target))) {
-          entities[eater].consume(entities.at(target));
-          std::cout << i << " ate " << j << "!" << std::endl;
+        if (entities[eater]->is_hungry() &&
+            entities[eater]->will_eat_target(entities[target])) {
+          entities[eater]->consume(*entities[target]);
+          std::cout << entities[eater]->name_hash() << " ate "
+                    << entities[target]->name_hash() << "!" << std::endl;
           continue;
         }
       }
-      if ((entities[i].gene_value("geodispersal gametophytes/not") &&
-           entities[j].gene_value("geodispersal gametophytes/not")) ||
+      if ((entities[i]->gene_value("geodispersal gametophytes/not") &
+           entities[j]->gene_value("geodispersal gametophytes/not")) ||
           affinities[i][j] > 0.8) {
-        if (entities[i].will_mate() && entities[j].will_mate() &&
-            entities[i].will_mate_target(entities.at(j))) {
+        if (entities[i]->will_mate() && entities[j]->will_mate() &&
+            entities[i]->will_mate_target(entities[j])) {
           // Mating.
-          babies.push_back(entities[i].mate(entities.at(j)));
-          std::cout << i << " and " << j
-                    << " mated (name: " << babies.back().name_value() << ")."
-                    << std::endl;
+          offspring.push_back(entities[i]->mate(*entities[j]));
+          std::cout << entities[i]->name_hash() << " and "
+                    << entities[j]->name_hash()
+                    << " mated (name: " << offspring.back()->name_hash()
+                    << ")." << std::endl;
         }
       }
     }
   }
 
-  entities.insert(entities.end(), std::make_move_iterator(babies.begin()),
-                  std::make_move_iterator(babies.end()));
+  entities.insert(entities.end(), std::make_move_iterator(offspring.begin()),
+                  std::make_move_iterator(offspring.end()));
 
   resize_pairwise();
 
   // Determine which entities we are removing.
   std::vector<int> to_erase;
   for (int i = 0; i < num_entities(); i++) {
-    if (!entities[i].alive_value() &&
-        entities[i].time_since_death() > Entity::corpse_lifetime) {
+    if (!entities[i]->alive_value() &&
+        entities[i]->time_since_death() > Entity::corpse_lifetime) {
       to_erase.push_back(i);
     }
   }
@@ -124,8 +130,8 @@ void State::update() {
 
   // Kill entities marked to die.
   for (int i = 0; i < num_entities(); i++) {
-    if (entities[i].will_die_value())
-      entities[i].kill();
+    if (entities[i]->will_die_value())
+      entities[i]->kill();
   }
 
   // Check if any entities met criteria for death.
@@ -151,12 +157,12 @@ double State::smallest_non_negative_or_NaN(double a, double b) const {
 }
 
 void State::add_entity(const std::string &name, double x, double y,
-                       double birth_mass) {
+                       double conception_mass) {
   if (x == 0.0)
     x = newx_dist(*random_generator);
   if (y == 0.0)
     y = newy_dist(*random_generator);
-  entities.emplace_back(this, name, x, y, birth_mass);
+  entities.emplace_back(new Entity(this, name, x, y, conception_mass));
 
   resize_pairwise();
 }
@@ -179,7 +185,7 @@ std::default_random_engine *State::get_random_generator() const {
 
 const int State::num_entities() const { return entities.size(); }
 
-const std::vector<Entity> *State::entities_value() const { return &entities; }
+const std::vector<Entity *> State::entities_value() const { return entities; }
 
 const std::vector<std::vector<double>> *State::d2s_value() const {
   return &d2s;
@@ -259,24 +265,27 @@ const Entity *State::nearest_target(Entity *actor, double &time_of_travel,
   double t;
 
   for (int i = 0; i < d2s.size(); i++) {
-    if (&entities[i] != actor)
+    if (entities[i] != actor)
       continue;
     for (int j = i + 1; j < d2s[i].size(); j++) {
-      if (&entities[j] != actor) {
-        if (looking_for == "mate") {
-          if (!actor->will_mate_target(entities[j]))
-            continue;
-        } else {
-          if (!actor->will_eat_target(entities[j]))
-            continue;
-        }
+      if (entities[j] == actor)
+        continue;
+      if (entities[j]->host_value() != NULL)
+        continue;
 
-        t = entity_intercept_time(actor, &entities[j]);
+      if (looking_for == "mate") {
+        if (!actor->will_mate_target(entities[j]))
+          continue;
+      } else {
+        if (!actor->will_eat_target(entities[j]))
+          continue;
+      }
 
-        if (t > 0.0 && t < time_of_travel) {
-          time_of_travel = t;
-          target = &entities[j];
-        }
+      t = entity_intercept_time(actor, entities[j]);
+
+      if (t > 0.0 && t < time_of_travel) {
+        time_of_travel = t;
+        target = entities[j];
       }
     }
   }
@@ -284,7 +293,7 @@ const Entity *State::nearest_target(Entity *actor, double &time_of_travel,
   return target;
 }
 
-void State::clear_entity_target(int i) { entities[i].clear_current_target(); }
+void State::clear_entity_target(int i) { entities[i]->clear_current_target(); }
 
 int State::trait_index(std::string trait) {
   std::vector<std::string>::iterator iter =
@@ -295,7 +304,7 @@ int State::trait_index(std::string trait) {
 
 int State::entity_index(const Entity *entity) const {
   for (int i = 0; i < entities.size(); i++) {
-    if (&entities[i] == entity)
+    if (entities[i] == entity)
       return i;
   }
   assert(false);

@@ -12,7 +12,7 @@ private:
   double money;
   long epoch;
   double x_size, y_size;
-  std::vector<Entity> entities;
+  std::vector<Entity *> entities;
   std::default_random_engine *random_generator;
   std::vector<std::vector<double>> d2s, affinities;
   std::uniform_real_distribution<double> newx_dist, newy_dist;
@@ -35,7 +35,7 @@ public:
   double x_size_value() const;
   double y_size_value() const;
   const int num_entities() const;
-  const std::vector<Entity> *entities_value() const;
+  const std::vector<Entity *> entities_value() const;
   const std::vector<std::vector<double>> *d2s_value() const;
   void minimum_vector(const Entity *, const Entity *, double &,
                       double &) const;

@@ -1,21 +1,24 @@
 #include "entity.h"
 #include "state.h"
+#include "utility.h"
 #include <cstdlib>
 #include <random>
+#include <sstream>
 
 std::vector<std::string> Entity::all_traits = {
     "stationary/mobile",        "asexual/sexual",
     "intelligent/passive",      "eats intelligent/not",
     "eats passive/not",         "photosynthesizes/not",
     "geodispersal embryos/not", "geodispersal gametophytes/not",
-    "natural defenses/not",     "e"};
+    "natural defenses/not",     "gestates/not"};
 
 Entity::Entity(State *parent, const std::string &name, double x, double y,
-               double birth_mass)
-    : parent(parent), name(name), alive(true), will_die(false), x(x), y(y),
-      px(0), py(0), mood(0), age(0l), birth_mass(birth_mass),
-      current_target(NULL) {
+               double conception_mass)
+    : parent(parent), name(name), alive(true), will_die(false), host(NULL),
+      x(x), y(y), px(0), py(0), mood(0), age(0l),
+      conception_mass(conception_mass), current_target(NULL) {
   random_generator = parent->get_random_generator();
+  parasites = std::vector<Entity *>();
 
   assert(x != 0.0 && y != 0.0);
 
@@ -23,7 +26,7 @@ Entity::Entity(State *parent, const std::string &name, double x, double y,
   gene = std::uniform_int_distribution<int>(0, 1);
   u = std::uniform_real_distribution<double>(0.0, 1.0);
 
-  genome = std::vector<int>(all_traits.size());
+  genome = std::vector<unsigned short>(all_traits.size());
 
   for (int i = 0; i < genome.size(); i++) {
     genome[i] = gene(*random_generator);
@@ -33,9 +36,9 @@ Entity::Entity(State *parent, const std::string &name, double x, double y,
 }
 
 Entity::~Entity() {
-  for (int i = 0; i < parent->entities_value()->size(); i++) {
+  for (int i = 0; i < parent->entities_value().size(); i++) {
     const Entity *current_target =
-        parent->entities_value()->at(i).current_target;
+        parent->entities_value()[i]->current_target;
     if (current_target != NULL && this == current_target) {
       parent->clear_entity_target(i);
     }
@@ -45,6 +48,8 @@ Entity::~Entity() {
 bool Entity::alive_value() const { return alive; }
 
 bool Entity::will_die_value() const { return will_die; }
+
+Entity *Entity::host_value() const { return host; }
 
 double Entity::x_value() const { return x; }
 
@@ -73,7 +78,8 @@ double Entity::kill_energy() const {
 }
 
 double Entity::max_energy() const {
-  return birth_mass + current_mass() * max_energy_coefficient * age / year;
+  return conception_mass +
+         current_mass() * max_energy_coefficient * age / year;
 }
 
 double Entity::prob_wants_food() const {
@@ -92,11 +98,11 @@ double Entity::prob_wants_mate() const {
 }
 
 double Entity::prob_mutation() const {
-  return std::min(1.0, age / impotence_age);
+  return std::min(1.0, age / impotence_age());
 }
 
 double Entity::prob_death() const {
-  return std::min(1.0, 0.002 * age / impotence_age);
+  return std::min(1.0, 0.002 * age / impotence_age());
 }
 
 double Entity::current_strength() const {
@@ -105,7 +111,7 @@ double Entity::current_strength() const {
 }
 
 double Entity::current_mass() const {
-  return birth_mass + std::log(1.0 + age / year);
+  return conception_mass + std::log(1.0 + age / year);
 }
 
 double Entity::terminal_speed() const {
@@ -118,25 +124,43 @@ double Entity::mate_energy() const {
          (gene_value("geodispersal gametophytes/not") ? 0.1 : 1.0);
 }
 
-double Entity::birth_energy() const { return 2.0 * mate_energy(); }
+double Entity::conception_energy() const { return 2.0 * mate_energy(); }
 
 double Entity::eating_energy() const {
   return eating_energy_coefficient * max_energy();
 }
 
+double Entity::impotence_age() const {
+  return impotence_age_coefficient *
+         (gene_value("stationary/mobile") ? 10 : 1);
+}
+
+double Entity::birth_age() const {
+  return birth_age_coefficient * impotence_age();
+}
+
 std::string Entity::name_value() const { return name; }
 
-const std::vector<int> *Entity::genome_value() const { return &genome; }
+std::string Entity::name_hash() const {
+  long hash = std::hash<std::string>{}(name);
+  std::stringstream stream;
+  stream << std::hex << hash;
+  return stream.str();
+}
+
+const std::vector<unsigned short> *Entity::genome_value() const {
+  return &genome;
+}
 
 const State *Entity::parent_value() const { return parent; }
 
 bool Entity::will_mate() const {
   return mood > mate_mood && energy >= mate_energy() && age > mating_age &&
-         age < impotence_age;
+         age < impotence_age();
 }
 
 bool Entity::is_hungry() const {
-  if (!gene_value("intelligent/passive"))
+  if (1 - gene_value("intelligent/passive"))
     return false;
   return (energy < hunger_threshold * max_energy());
 }
@@ -157,21 +181,22 @@ void Entity::adjust_energy(double adjustment) {
 void Entity::adjust_needs() {
   age += parent->tick_time;
   mood *= 0.998;
-  adjust_energy(-0.0005 - 0.0005 * gene_value("natural defenses/not") +
-                std::min(mood * 0.01, 0.0) +
-                0.0012 * gene_value("photosynthesizes/not"));
+  adjust_energy(current_mass() *
+                (-0.0005 - 0.0005 * gene_value("natural defenses/not") +
+                 std::min(mood * 0.01, 0.0) +
+                 0.0012 * gene_value("photosynthesizes/not")));
 }
 
 void Entity::check_for_death() {
   if (alive) {
     if (energy <= 0.0) {
       kill();
-      std::cout << "Entity " << parent->entity_index(this)
-                << " starved to death." << std::endl;
+      std::cout << "Entity " << name_hash() << " starved to death."
+                << std::endl;
     } else if (u(*random_generator) < prob_death()) {
       kill();
-      std::cout << "Entity " << parent->entity_index(this)
-                << " died of natural causes." << std::endl;
+      std::cout << "Entity " << name_hash() << " died of natural causes."
+                << std::endl;
     }
   }
 }
@@ -182,6 +207,17 @@ void Entity::move() {
 
   if (gene_value("stationary/mobile"))
     return;
+
+  if (host != NULL) {
+    if (age > birth_age()) {
+      // Detach from host.
+      remove_item_from_vector(host->parasites, this);
+      host = NULL;
+      std::cout << name << " was born!" << std::endl;
+    } else {
+      return;
+    }
+  }
 
   double ts = terminal_speed();
   double a = std::min(px * px + py * py, ts * ts) / (ts * ts);
@@ -202,13 +238,11 @@ void Entity::move() {
         if (u(*random_generator) < target_forget_probability)
           current_target = NULL;
       }
-      if (current_target == NULL &&
-          u(*random_generator) < prob_wants_food()) {
+      if (current_target == NULL && u(*random_generator) < prob_wants_food()) {
         // Move to nearest food.
         current_target = parent->nearest_target(this, time_of_travel, "food");
       }
-      if (current_target == NULL &&
-          u(*random_generator) < prob_wants_mate()) {
+      if (current_target == NULL && u(*random_generator) < prob_wants_mate()) {
         // Move to nearest mate.
         current_target = parent->nearest_target(this, time_of_travel, "mate");
       }
@@ -265,10 +299,17 @@ void Entity::move() {
   } else if (y < 0) {
     y += parent->y_size_value();
   }
+
+  for (auto &elem : parasites) {
+    elem->x = x;
+    elem->y = y;
+    elem->px = 0.0;
+    elem->py = 0.0;
+  }
 }
 
-int Entity::genome_distance(const std::vector<int> *a,
-                            const std::vector<int> *b) const {
+int Entity::genome_distance(const std::vector<unsigned short> *a,
+                            const std::vector<unsigned short> *b) const {
   assert(a->size() == b->size());
 
   int dist = 0;
@@ -282,6 +323,8 @@ int Entity::genome_distance(const std::vector<int> *a,
 int Entity::gene_value(std::string trait) const {
   return genome[parent->trait_index(trait)];
 }
+
+int Entity::parasite_count() const { return parasites.size(); }
 
 void Entity::interact(Entity &other) {
   int dist = genome_distance(&genome, other.genome_value());
@@ -298,29 +341,50 @@ void Entity::interact(Entity &other) {
   //           << other.mood_value() << std::endl;
 }
 
-void Entity::set_genome(std::vector<int> new_genome) { genome = new_genome; }
+void Entity::set_genome(std::vector<unsigned short> new_genome) {
+  genome = new_genome;
+}
 
-Entity Entity::mate(Entity &other) {
+Entity *Entity::mate(Entity &other) {
   std::uniform_int_distribution<int> gene(0, 1);
   std::string new_name = "(" + name + " + " + other.name + ")";
 
   energy -= mate_energy();
   other.energy -= other.mate_energy();
 
-  double spawn_d = gene_value("geodispersal embryos/not") ? 5 : 250;
-  double new_x = 0.5 * (x + other.x) + spawn_d * d(*random_generator);
-  double new_y = 0.5 * (y + other.y) + spawn_d * d(*random_generator);
-  double offspring_mass =
-      birth_mass_coefficient * 0.5 * (current_mass() + other.current_mass());
+  Entity *new_host;
 
-  if (gene_value("geodispersal gametophytes/not") and
+  bool impregnates =
+      gene_value("gestates/not") | other.gene_value("gestates/not");
+
+  double new_x, new_y;
+
+  if (impregnates) {
+    new_host = gene_value("gestates/not") ? this : &other;
+    if (new_host == this) {
+      new_x = x;
+      new_y = y;
+    } else {
+      new_x = other.x;
+      new_y = other.y;
+    }
+  } else {
+    double spawn_d = gene_value("geodispersal embryos/not") ? 5 : 250;
+    new_x = 0.5 * (x + other.x) + spawn_d * d(*random_generator);
+    new_y = 0.5 * (y + other.y) + spawn_d * d(*random_generator);
+  }
+
+  double offspring_mass = conception_mass_coefficient * 0.5 *
+                          (current_mass() + other.current_mass());
+
+  if (gene_value("geodispersal gametophytes/not") &
       other.gene_value("geodispersal gametophytes/not")) {
     offspring_mass *= 0.1;
   }
 
-  Entity ret = Entity(parent, new_name, new_x, new_y, offspring_mass);
+  Entity *ret = new Entity(parent, new_name, new_x, new_y, offspring_mass);
 
-  std::vector<int> new_genome = genome;
+  std::vector<unsigned short> new_genome = genome;
   for (int i = 0; i < genome.size(); i++) {
     if (gene(*random_generator) == 1) {
       new_genome[i] = other.genome[i];
@@ -330,22 +394,31 @@ Entity Entity::mate(Entity &other) {
     if (u(*random_generator) < prob_mutation())
       new_genome[i] = 1 - new_genome[i];
   }
-  ret.set_genome(new_genome);
+  ret->set_genome(new_genome);
+
+  if (impregnates) {
+    ret->assign_host(new_host);
+    new_host->parasites.push_back(ret);
+    std::cout << name_hash() << " impregnated, now has "
+              << new_host->parasite_count() << " parasites." << std::endl;
+  }
 
   return ret;
 }
 
-bool Entity::will_mate_target(const Entity &target) const {
-  if (target.energy_value() < target.mate_energy())
+void Entity::assign_host(Entity *entity) { host = entity; }
+
+bool Entity::will_mate_target(const Entity *target) const {
+  if (target->energy_value() < target->mate_energy())
     return false;
 
-  int genetic_diff = genome_distance(&genome, &target.genome);
+  int genetic_diff = genome_distance(&genome, &target->genome);
 
   if (genetic_diff <= mating_distance) {
-    if (gene_value("geodispersal gametophytes/not") &&
-        target.gene_value("geodispersal gametophytes/not")) {
-      double dist = std::sqrt(pow(x - target.x, 2) + pow(y - target.y, 2));
-      if (u(*random_generator) < 1.0 - pow(1.0 / dist, 2))
+    if (gene_value("geodispersal gametophytes/not") &
+        target->gene_value("geodispersal gametophytes/not")) {
+      double dist = std::sqrt(pow(x - target->x, 2) + pow(y - target->y, 2));
+      if (u(*random_generator) > pow(1.0 / dist, 2))
         return false;
     }
     return true;
@@ -354,19 +427,19 @@ bool Entity::will_mate_target(const Entity &target) const {
   }
 }
 
-bool Entity::can_eat_target(const Entity &target) const {
-  return target.energy > 0 && target.alive;
+bool Entity::can_eat_target(const Entity *target) const {
+  return target->energy > 0 && target->alive;
 }
 
-bool Entity::will_eat_target(const Entity &target) const {
-  if (target.energy <= 0 || !target.alive ||
-      current_strength() < target.current_strength())
+bool Entity::will_eat_target(const Entity *target) const {
+  if (target->energy <= 0 || !target->alive ||
+      current_strength() < target->current_strength())
     return false;
 
-  if (target.energy + target.kill_energy() < eating_energy())
+  if (target->energy + target->kill_energy() < eating_energy())
     return false;
 
-  int dist = genome_distance(&genome, &target.genome);
+  int dist = genome_distance(&genome, &target->genome);
 
   if (dist > never_eat_distance &&
       dist >= always_eat_distance *
@@ -393,12 +466,23 @@ void Entity::consume(Entity &target) {
   target.will_die = true;
 }
 
-void Entity::kill() {
+void Entity::kill(bool remove_from_host) {
+  if (remove_from_host && host != NULL)
+    remove_item_from_vector(parasites, this);
   will_die = false;
   alive = false;
   px = 0.0;
   py = 0.0;
   epoch_of_death = parent->epoch_value();
+
+  // Kill all parasites as well.
+  std::cout << "Parasite count of killed entity (" << name_hash()
+            << "): " << parasite_count() << std::endl;
+  for (auto &elem : parasites) {
+    std::cout << "Killing parasite named " << elem->name_hash() << std::endl;
+    elem->host = NULL;
+    elem->kill(false);
+  }
 }
 
 void Entity::clear_current_target() { current_target = NULL; }

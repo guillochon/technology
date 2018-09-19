@@ -53,6 +53,10 @@ void simulation(State &state, SDL_Window *window) {
 
   using clock = std::chrono::high_resolution_clock;
 
+  std::default_random_engine *random_generator = state.get_random_generator();
+
+  std::normal_distribution<double> normal_dist(0.0, 1.0);
+
   std::chrono::nanoseconds lag(0ns);
 
   // Font stuff.
@@ -74,12 +78,20 @@ void simulation(State &state, SDL_Window *window) {
   SDL_Event e;
 
   long n_ticks = 0;
+  long n_clicks = 0;
+
+  bool mouse_button_down = false;
+  int mouse_x, mouse_y;
 
   while (!quit) {
     while (SDL_PollEvent(&e) != 0) {
       // User requests quit
       if (e.type == SDL_QUIT) {
         quit = true;
+      } else if (e.type == SDL_MOUSEBUTTONDOWN) {
+        mouse_button_down = true;
+      } else if (e.type == SDL_MOUSEBUTTONUP) {
+        mouse_button_down = false;
       }
     }
 
@@ -90,6 +102,15 @@ void simulation(State &state, SDL_Window *window) {
     // SDL_Delay(subtick);
 
     while (lag >= tick) {
+      if (mouse_button_down) {
+        n_clicks++;
+        SDL_GetMouseState(&mouse_x, &mouse_y);
+        std::cout << "Mouse click!" << std::endl;
+        state.add_entity("c" + std::to_string(n_clicks),
+                         2 * mouse_x + normal_dist(*random_generator),
+                         2 * mouse_y + normal_dist(*random_generator));
+      }
+
       n_ticks++;
 
       lag -= tick;
@@ -109,51 +130,53 @@ void simulation(State &state, SDL_Window *window) {
 
       int render_count = 0;
       std::vector<int> rgba(4);
-      for (auto const &i : *state.entities_value()) {
+      for (auto const &i : state.entities_value()) {
         render_count++;
         double death_scale =
-            (i.alive_value() ? 1.0
+            (i->alive_value() ? 1.0
                              : (0.9 *
                                     std::max(Entity::corpse_lifetime -
-                                                 i.time_since_death(),
+                                                 i->time_since_death(),
                                              0.0) /
                                     Entity::corpse_lifetime +
                                 0.1));
-        if (i.age_value() < Entity::mating_age) {
+        if (i->age_value() < Entity::mating_age) {
           rgba = {0, 0, int(std::floor(death_scale * 255)), 255};
-        } else if (i.age_value() > Entity::impotence_age) {
+        } else if (i->age_value() > i->impotence_age()) {
           rgba = {int(std::floor(death_scale * 255)), 0,
                   int(std::floor(death_scale * 255)), 255};
         } else {
           double mood_scale =
-              0.5 * (1.0 + 2.0 / PI * std::atan(i.mood_value()));
+              0.5 * (1.0 + 2.0 / PI * std::atan(i->mood_value()));
           rgba = {int(std::floor(255 * death_scale * (1.0 - mood_scale))),
                   int(std::floor(255 * death_scale * mood_scale)), 0, 255};
         }
 
-        hew = std::max(base_hew * i.current_mass(), 1.0);
+        hew = std::max(base_hew * i->current_mass(), 1.0);
         ew = 2 * hew;
 
-        // DrawFilledCircle(renderer, i.x_value(), i.y_value(), hew);
+        // DrawFilledCircle(renderer, i->x_value(), i->y_value(), hew);
 
-        filledCircleRGBA(renderer, i.x_value(), i.y_value(), hew, rgba[0],
+        filledCircleRGBA(renderer, i->x_value(), i->y_value(), hew, rgba[0],
                          rgba[1], rgba[2], rgba[3]);
 
-        // std::string status;
-        //
-        // if (!i.alive_value()) {
-        //   status += "d";
-        // } else {
-        //   if (i.is_hungry())
-        //     status += "h";
-        //   if (i.will_mate())
-        //     status += "m";
-        // }
-        //
-        // if (status != "") {
-        //   draw_text(renderer, small_font, status.c_str(), i.x_value(),
-        //             i.y_value() + hew, true, true);
-        // }
+        std::string status;
+
+        if (!i->alive_value()) {
+          status += "d";
+        } else {
+          if (i->is_hungry())
+            status += "h";
+          if (i->will_mate())
+            status += "m";
+          if (i->parasite_count())
+            status += std::to_string(i->parasite_count());
+        }
+
+        if (status != "") {
+          draw_text(renderer, small_font, status.c_str(), i->x_value(),
+                    i->y_value() + hew, true, true);
+        }
       }
 
       SDL_RenderPresent(renderer);
@@ -173,7 +196,7 @@ int main() {
 
   State state(100.0, 0l, x_size, y_size);
 
-  for (int i = 0; i < 400; i++) {
+  for (int i = 0; i < 40; i++) {
     std::string name = std::to_string(i);
     state.add_entity(name);
   }
