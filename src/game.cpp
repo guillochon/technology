@@ -134,15 +134,15 @@ void simulation(State &state, SDL_Window *window) {
         render_count++;
         double death_scale =
             (i->alive_value() ? 1.0
-                             : (0.9 *
-                                    std::max(Entity::corpse_lifetime -
-                                                 i->time_since_death(),
-                                             0.0) /
-                                    Entity::corpse_lifetime +
-                                0.1));
-        if (i->age_value() < Entity::mating_age) {
+                              : (0.9 *
+                                     std::max(Entity::corpse_lifetime -
+                                                  i->time_since_death(),
+                                              0.0) /
+                                     Entity::corpse_lifetime +
+                                 0.1));
+        if (i->age_since_birth() < Entity::mating_age) {
           rgba = {0, 0, int(std::floor(death_scale * 255)), 255};
-        } else if (i->age_value() > i->impotence_age()) {
+        } else if (i->age_since_birth() > i->impotence_age()) {
           rgba = {int(std::floor(death_scale * 255)), 0,
                   int(std::floor(death_scale * 255)), 255};
         } else {
@@ -160,23 +160,35 @@ void simulation(State &state, SDL_Window *window) {
         filledCircleRGBA(renderer, i->x_value(), i->y_value(), hew, rgba[0],
                          rgba[1], rgba[2], rgba[3]);
 
-        std::string status;
-
-        if (!i->alive_value()) {
-          status += "d";
-        } else {
-          if (i->is_hungry())
-            status += "h";
-          if (i->will_mate())
-            status += "m";
-          if (i->parasite_count())
-            status += std::to_string(i->parasite_count());
+        int pc = i->parasite_count();
+        if (i->host_value() == NULL && pc > 0) {
+          for (int p = 0; p < pc; p++) {
+            if (pc == 1) {
+              circleRGBA(renderer, i->x_value(), i->y_value(), hew + 3,
+                         rgba[0], rgba[1], rgba[2], rgba[3]);
+            }
+          }
         }
 
-        if (status != "") {
-          draw_text(renderer, small_font, status.c_str(), i->x_value(),
-                    i->y_value() + hew, true, true);
-        }
+        // std::string status;
+        //
+        // if (i->host_value() == NULL) {
+        //   if (!i->alive_value()) {
+        //     status += "d";
+        //   } else {
+        //     if (i->is_hungry())
+        //       status += "h";
+        //     if (i->will_mate())
+        //       status += "m";
+        //     if (i->parasite_count())
+        //       status += std::to_string(i->parasite_count());
+        //   }
+        // }
+        //
+        // if (status != "") {
+        //   draw_text(renderer, small_font, status.c_str(), i->x_value(),
+        //             i->y_value() + hew, true, true);
+        // }
       }
 
       SDL_RenderPresent(renderer);

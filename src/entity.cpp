@@ -13,10 +13,11 @@ std::vector<std::string> Entity::all_traits = {
     "natural defenses/not",     "gestates/not"};
 
 Entity::Entity(State *parent, const std::string &name, double x, double y,
-               double conception_mass)
-    : parent(parent), name(name), alive(true), will_die(false), host(NULL),
+               double conception_mass, std::vector<unsigned short> igenome,
+               Entity *host)
+    : parent(parent), name(name), alive(true), will_die(false), host(host),
       x(x), y(y), px(0), py(0), mood(0), age(0l),
-      conception_mass(conception_mass), current_target(NULL) {
+      conception_mass(conception_mass), current_target(NULL), genome(igenome) {
   random_generator = parent->get_random_generator();
   parasites = std::vector<Entity *>();
 
@@ -26,19 +27,22 @@ Entity::Entity(State *parent, const std::string &name, double x, double y,
   gene = std::uniform_int_distribution<int>(0, 1);
   u = std::uniform_real_distribution<double>(0.0, 1.0);
 
-  genome = std::vector<unsigned short>(all_traits.size());
+  if (genome.size() == 0) {
+    genome = std::vector<unsigned short>(all_traits.size());
 
-  for (int i = 0; i < genome.size(); i++) {
-    genome[i] = gene(*random_generator);
+    for (int i = 0; i < genome.size(); i++) {
+      genome[i] = gene(*random_generator);
+    }
   }
 
   adjust_energy(max_energy() * (0.2 + 0.8 * u(*random_generator)));
+
+  age = birth_age();
 }
 
 Entity::~Entity() {
   for (int i = 0; i < parent->entities_value().size(); i++) {
-    const Entity *current_target =
-        parent->entities_value()[i]->current_target;
+    const Entity *current_target = parent->entities_value()[i]->current_target;
     if (current_target != NULL && this == current_target) {
       parent->clear_entity_target(i);
     }
@@ -102,7 +106,7 @@ double Entity::prob_mutation() const {
 }
 
 double Entity::prob_death() const {
-  return std::min(1.0, 0.002 * age / impotence_age());
+  return std::min(1.0, death_probability_coefficient * age / impotence_age());
 }
 
 double Entity::current_strength() const {
@@ -130,14 +134,17 @@ double Entity::eating_energy() const {
   return eating_energy_coefficient * max_energy();
 }
 
-double Entity::impotence_age() const {
+long Entity::impotence_age() const {
   return impotence_age_coefficient *
          (gene_value("stationary/mobile") ? 10 : 1);
 }
 
-double Entity::birth_age() const {
-  return birth_age_coefficient * impotence_age();
+long Entity::birth_age() const {
+  return gene_value("gestates/not") ? birth_age_coefficient * impotence_age()
+                                    : 0;
 }
+
+long Entity::age_since_birth() const { return age - birth_age(); }
 
 std::string Entity::name_value() const { return name; }
 
@@ -155,8 +162,9 @@ const std::vector<unsigned short> *Entity::genome_value() const {
 const State *Entity::parent_value() const { return parent; }
 
 bool Entity::will_mate() const {
-  return mood > mate_mood && energy >= mate_energy() && age > mating_age &&
-         age < impotence_age();
+  return mood > mate_mood && energy >= mate_energy() &&
+         age - birth_age() > mating_age &&
+         age - birth_age() < impotence_age() && parasite_count() == 0;
 }
 
 bool Entity::is_hungry() const {
@@ -181,10 +189,21 @@ void Entity::adjust_energy(double adjustment) {
 void Entity::adjust_needs() {
   age += parent->tick_time;
   mood *= 0.998;
-  adjust_energy(current_mass() *
-                (-0.0005 - 0.0005 * gene_value("natural defenses/not") +
-                 std::min(mood * 0.01, 0.0) +
-                 0.0012 * gene_value("photosynthesizes/not")));
+
+  double cm = current_mass();
+  double metabolism =
+      (host == NULL)
+          ? cm * (-0.0005 - 0.0005 * gene_value("natural defenses/not"))
+          : 0;
+  double de = metabolism;
+
+  de += cm * (std::min(mood * 0.01, 0.0) +
+              0.0012 * gene_value("photosynthesizes/not"));
+
+  if (host != NULL)
+    host->adjust_energy(metabolism);
+
+  adjust_energy(de);
 }
 
 void Entity::check_for_death() {
@@ -352,7 +371,7 @@ Entity *Entity::mate(Entity &other) {
   energy -= mate_energy();
   other.energy -= other.mate_energy();
 
-  Entity *new_host;
+  Entity *new_host = NULL;
 
   bool impregnates =
       gene_value("gestates/not") | other.gene_value("gestates/not");
@@ -382,10 +401,8 @@ Entity *Entity::mate(Entity &other) {
     offspring_mass *= 0.1;
   }
 
-  Entity *ret = new Entity(parent, new_name, new_x, new_y, offspring_mass);
-
   std::vector<unsigned short> new_genome = genome;
-  for (int i = 0; i < genome.size(); i++) {
+  for (int i = 0; i < new_genome.size(); i++) {
     if (gene(*random_generator) == 1) {
       new_genome[i] = other.genome[i];
       if (u(*random_generator) < other.prob_mutation())
@@ -394,10 +411,11 @@ Entity *Entity::mate(Entity &other) {
     if (u(*random_generator) < prob_mutation())
       new_genome[i] = 1 - new_genome[i];
   }
-  ret->set_genome(new_genome);
+
+  Entity *ret = new Entity(parent, new_name, new_x, new_y, offspring_mass,
+                           new_genome, new_host);
 
   if (impregnates) {
-    ret->assign_host(new_host);
     new_host->parasites.push_back(ret);
     std::cout << name_hash() << " impregnated, now has "
               << new_host->parasite_count() << " parasites." << std::endl;

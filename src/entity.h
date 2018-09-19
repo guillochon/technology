@@ -43,13 +43,15 @@ public:
   static constexpr double birth_age_coefficient = 0.1;
   static constexpr double corpse_lifetime = 86400 * 60;
   static constexpr double target_forget_probability = 0.0002;
+  static constexpr double death_probability_coefficient = 0.001;
 
   static constexpr double always_eat_distance = mating_distance + 3;
   static constexpr double never_eat_distance = mating_distance - 1;
 
   static std::vector<std::string> all_traits;
 
-  Entity(State *parent, const std::string &, double, double, double);
+  Entity(State *parent, const std::string &, double, double, double,
+         std::vector<unsigned short> = {}, Entity * = NULL);
   ~Entity();
   bool alive_value() const;
   bool will_die_value() const;
@@ -81,8 +83,9 @@ public:
   double mate_energy() const;
   double conception_energy() const;
   double eating_energy() const;
-  double impotence_age() const;
-  double birth_age() const;
+  long impotence_age() const;
+  long birth_age() const;
+  long age_since_birth() const;
   bool will_mate() const;
   bool is_hungry() const;
   int gene_value(std::string) const;

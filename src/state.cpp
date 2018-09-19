@@ -17,7 +17,11 @@ State::State(double money, long epoch, double x_size, double y_size)
   entities = std::vector<Entity *>();
 }
 
-State::~State() { delete (random_generator); }
+State::~State() {
+  delete (random_generator);
+  for (auto i : entities)
+    delete i;
+}
 
 double State::money_value() const { return money; }
 
