@@ -15,8 +15,10 @@ private:
   double mood, energy, age, birth_mass;
   long epoch_of_death;
   const Entity *current_target;
-  std::normal_distribution<double> d;
-  std::uniform_real_distribution<double> u;
+  std::default_random_engine *random_generator;
+  mutable std::normal_distribution<double> d;
+  mutable std::uniform_int_distribution<int> gene;
+  mutable std::uniform_real_distribution<double> u;
   std::vector<int> genome;
 
 public:
@@ -76,7 +78,7 @@ public:
   const State *parent_value() const;
   bool can_eat_target(const Entity &) const;
   bool will_eat_target(const Entity &) const;
-  bool will_mate_target(const Entity &);
+  bool will_mate_target(const Entity &) const;
   bool will_mate() const;
   bool is_hungry() const;
 

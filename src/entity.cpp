@@ -15,21 +15,21 @@ Entity::Entity(State *parent, const std::string &name, double x, double y,
     : parent(parent), name(name), alive(true), will_die(false), x(x), y(y),
       px(0), py(0), mood(0), age(0l), birth_mass(birth_mass),
       current_target(NULL) {
-  std::default_random_engine *gen = parent->get_gen();
+  random_generator = parent->get_random_generator();
 
   assert(x != 0.0 && y != 0.0);
 
   d = std::normal_distribution<double>(0.0, 1.0);
-  std::uniform_int_distribution<int> gene(0, 1);
+  gene = std::uniform_int_distribution<int>(0, 1);
   u = std::uniform_real_distribution<double>(0.0, 1.0);
 
   genome = std::vector<int>(all_traits.size());
 
   for (int i = 0; i < genome.size(); i++) {
-    genome[i] = gene(*gen);
+    genome[i] = gene(*random_generator);
   }
 
-  adjust_energy(max_energy() * (0.2 + 0.8 * u(*gen)));
+  adjust_energy(max_energy() * (0.2 + 0.8 * u(*random_generator)));
 }
 
 Entity::~Entity() {
@@ -168,7 +168,7 @@ void Entity::check_for_death() {
       kill();
       std::cout << "Entity " << parent->entity_index(this)
                 << " starved to death." << std::endl;
-    } else if (u(*parent->get_gen()) < prob_death()) {
+    } else if (u(*random_generator) < prob_death()) {
       kill();
       std::cout << "Entity " << parent->entity_index(this)
                 << " died of natural causes." << std::endl;
@@ -182,8 +182,6 @@ void Entity::move() {
 
   if (gene_value("stationary/mobile"))
     return;
-
-  std::default_random_engine *gen = parent->get_gen();
 
   double ts = terminal_speed();
   double a = std::min(px * px + py * py, ts * ts) / (ts * ts);
@@ -201,16 +199,16 @@ void Entity::move() {
     if (intelligent) {
       if (current_target != NULL) {
         time_of_travel = parent->entity_intercept_time(this, current_target);
-        if (u(*parent->get_gen()) < target_forget_probability)
+        if (u(*random_generator) < target_forget_probability)
           current_target = NULL;
       }
       if (current_target == NULL &&
-          u(*parent->get_gen()) < prob_wants_food()) {
+          u(*random_generator) < prob_wants_food()) {
         // Move to nearest food.
         current_target = parent->nearest_target(this, time_of_travel, "food");
       }
       if (current_target == NULL &&
-          u(*parent->get_gen()) < prob_wants_mate()) {
+          u(*random_generator) < prob_wants_mate()) {
         // Move to nearest mate.
         current_target = parent->nearest_target(this, time_of_travel, "mate");
       }
@@ -242,12 +240,12 @@ void Entity::move() {
       }
 
       // Add a little jitter.
-      dpx += 0.2 * max_speed * d(*gen);
-      dpy += 0.2 * max_speed * d(*gen);
+      dpx += 0.2 * max_speed * d(*random_generator);
+      dpy += 0.2 * max_speed * d(*random_generator);
     } else {
       // Random walk.
-      dpx = max_speed * d(*gen);
-      dpy = max_speed * d(*gen);
+      dpx = max_speed * d(*random_generator);
+      dpy = max_speed * d(*random_generator);
     }
     px += dpx;
     py += dpy;
@@ -310,8 +308,8 @@ Entity Entity::mate(Entity &other) {
   other.energy -= other.mate_energy();
 
   double spawn_d = gene_value("geodispersal embryos/not") ? 5 : 250;
-  double new_x = 0.5 * (x + other.x) + spawn_d * d(*parent->get_gen());
-  double new_y = 0.5 * (y + other.y) + spawn_d * d(*parent->get_gen());
+  double new_x = 0.5 * (x + other.x) + spawn_d * d(*random_generator);
+  double new_y = 0.5 * (y + other.y) + spawn_d * d(*random_generator);
   double offspring_mass =
       birth_mass_coefficient * 0.5 * (current_mass() + other.current_mass());
 
@@ -324,12 +322,12 @@ Entity Entity::mate(Entity &other) {
 
   std::vector<int> new_genome = genome;
   for (int i = 0; i < genome.size(); i++) {
-    if (gene(*parent->get_gen()) == 1) {
+    if (gene(*random_generator) == 1) {
       new_genome[i] = other.genome[i];
-      if (u(*parent->get_gen()) < other.prob_mutation())
+      if (u(*random_generator) < other.prob_mutation())
         new_genome[i] = 1 - new_genome[i];
     }
-    if (u(*parent->get_gen()) < prob_mutation())
+    if (u(*random_generator) < prob_mutation())
       new_genome[i] = 1 - new_genome[i];
   }
   ret.set_genome(new_genome);
@@ -337,7 +335,7 @@ Entity Entity::mate(Entity &other) {
   return ret;
 }
 
-bool Entity::will_mate_target(const Entity &target) {
+bool Entity::will_mate_target(const Entity &target) const {
   if (target.energy_value() < target.mate_energy())
     return false;
 
@@ -347,7 +345,7 @@ bool Entity::will_mate_target(const Entity &target) {
     if (gene_value("geodispersal gametophytes/not") &&
         target.gene_value("geodispersal gametophytes/not")) {
       double dist = std::sqrt(pow(x - target.x, 2) + pow(y - target.y, 2));
-      if (u(*parent->get_gen()) < 1.0 - pow(1.0 / dist, 2))
+      if (u(*random_generator) < 1.0 - pow(1.0 / dist, 2))
         return false;
     }
     return true;

@@ -13,7 +13,7 @@ private:
   long epoch;
   double x_size, y_size;
   std::vector<Entity> entities;
-  std::default_random_engine gen;
+  std::default_random_engine *random_generator;
   std::vector<std::vector<double>> d2s, affinities;
   std::uniform_real_distribution<double> newx_dist, newy_dist;
 
@@ -22,10 +22,11 @@ public:
   static constexpr double interaction_distance = 5.0;
 
   State(double, long, double, double);
+  ~State();
   double money_value() const;
   long epoch_value() const;
   std::string date_str() const;
-  std::default_random_engine *get_gen();
+  std::default_random_engine * get_random_generator() const;
   void update();
   double smallest_non_negative_or_NaN(double, double) const;
   void add_entity(const std::string &, double = 0.0, double = 0.0,

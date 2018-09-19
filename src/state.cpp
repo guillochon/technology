@@ -11,11 +11,13 @@
 State::State(double money, long epoch, double x_size, double y_size)
     : money(money), epoch(epoch), x_size(x_size), y_size(y_size) {
   std::random_device rd;
-  gen = std::default_random_engine(rd());
+  random_generator = new std::default_random_engine(rd());
   newx_dist = std::uniform_real_distribution<double>(0.0, x_size);
   newy_dist = std::uniform_real_distribution<double>(0.0, y_size);
   entities = std::vector<Entity>();
 }
+
+State::~State() { delete (random_generator); }
 
 double State::money_value() const { return money; }
 
@@ -151,9 +153,9 @@ double State::smallest_non_negative_or_NaN(double a, double b) const {
 void State::add_entity(const std::string &name, double x, double y,
                        double birth_mass) {
   if (x == 0.0)
-    x = newx_dist(gen);
+    x = newx_dist(*random_generator);
   if (y == 0.0)
-    y = newy_dist(gen);
+    y = newy_dist(*random_generator);
   entities.emplace_back(this, name, x, y, birth_mass);
 
   resize_pairwise();
@@ -171,7 +173,9 @@ void State::resize_pairwise() {
   }
 }
 
-std::default_random_engine *State::get_gen() { return &gen; }
+std::default_random_engine *State::get_random_generator() const {
+  return random_generator;
+}
 
 const int State::num_entities() const { return entities.size(); }
 
@@ -248,8 +252,7 @@ double State::entity_intercept_time(const Entity *actor,
   return smallest_non_negative_or_NaN(t1, t2);
 }
 
-const Entity *State::nearest_target(Entity *actor,
-                                    double &time_of_travel,
+const Entity *State::nearest_target(Entity *actor, double &time_of_travel,
                                     std::string looking_for) const {
   time_of_travel = std::numeric_limits<double>::infinity();
   const Entity *target = NULL;
