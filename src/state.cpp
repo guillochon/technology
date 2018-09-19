@@ -133,10 +133,9 @@ void State::update() {
       affinities.end());
 
   // Kill entities marked to die.
-  for (int i = 0; i < num_entities(); i++) {
-    if (entities[i]->will_die_value())
-      entities[i]->kill();
-  }
+  for (auto &e: entities)
+    if (e->will_die_value())
+      e->kill();
 
   // Check if any entities met criteria for death.
   std::for_each(entities.begin(), entities.end(),
@@ -297,7 +296,14 @@ const Entity *State::nearest_target(Entity *actor, double &time_of_travel,
   return target;
 }
 
-void State::clear_entity_target(int i) { entities[i]->clear_current_target(); }
+void State::clear_targets(Entity *entity) {
+  for (auto &e: entities) {
+    const Entity *current_target = e->current_target_value();
+    if (current_target != NULL && entity == current_target) {
+      e->clear_current_target();
+    }
+  }
+}
 
 int State::trait_index(std::string trait) {
   std::vector<std::string>::iterator iter =

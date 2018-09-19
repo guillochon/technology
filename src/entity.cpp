@@ -30,8 +30,8 @@ Entity::Entity(State *parent, const std::string &name, double x, double y,
   if (genome.size() == 0) {
     genome = std::vector<unsigned short>(all_traits.size());
 
-    for (int i = 0; i < genome.size(); i++) {
-      genome[i] = gene(*random_generator);
+    for (auto &g: genome) {
+      g = gene(*random_generator);
     }
   }
 
@@ -41,12 +41,7 @@ Entity::Entity(State *parent, const std::string &name, double x, double y,
 }
 
 Entity::~Entity() {
-  for (int i = 0; i < parent->entities_value().size(); i++) {
-    const Entity *current_target = parent->entities_value()[i]->current_target;
-    if (current_target != NULL && this == current_target) {
-      parent->clear_entity_target(i);
-    }
-  }
+  parent->clear_targets(this);
 }
 
 bool Entity::alive_value() const { return alive; }

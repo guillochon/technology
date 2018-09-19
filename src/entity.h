@@ -68,6 +68,7 @@ public:
   std::string name_hash() const;
   const std::vector<unsigned short> *genome_value() const;
   const State *parent_value() const;
+  const Entity *current_target_value() const;
 
   long epoch_of_death_value() const;
   long time_since_death() const;
